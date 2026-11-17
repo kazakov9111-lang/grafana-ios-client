@@ -1,0 +1,75 @@
+name: Screenshots
+on:
+  workflow_dispatch:
+jobs:
+  shots:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Выбор симулятора
+        id: sim
+        run: |
+          xcrun simctl list devices available | grep -E "iPhone" | head -30
+          UDID=$(xcrun simctl list devices available | grep -E "iPhone .*Pro Max" | tail -1 | grep -oE '[0-9A-F]{8}-[0-9A-F-]{27}')
+          echo "udid=$UDID" >> $GITHUB_OUTPUT
+          echo "Выбран $UDID"
+      - name: Сборка для симулятора
+        run: |
+          xcodebuild -project Grafana.xcodeproj -scheme Grafana -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -configuration Debug -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO build | tail -30
+      - name: Скриншоты
+        run: |
+          UDID=${{ steps.sim.outputs.udid }}
+          xcrun simctl boot $UDID
+          xcrun simctl bootstatus $UDID -b
+          xcrun simctl install $UDID build/Build/Products/Debug-iphonesimulator/Grafana.app
+          mkdir -p shots
+          shot() {
+            name=$1; shift
+            xcrun simctl launch --terminate-running-process $UDID com.personal.grafana --demo "$@" >/dev/null
+            sleep 9
+            xcrun simctl io $UDID screenshot shots/$name.png
+          }
+          shot 01-overview --tab 0
+          shot 02-check --tab 0 --check 0
+          shot 03-problems --tab 1
+          shot 04-problem-detail --tab 1 --problem 0
+          shot 05-systems --tab 2
+          shot 06-servers --tab 2 --system servers
+          shot 07-host --tab 2 --system servers --host 0
+          shot 08-net --tab 2 --system net
+          shot 09-mail --tab 2 --system mail
+          shot 10-veeam --tab 2 --system veeam
+          shot 11-agents --tab 2 --system agents
+          shot 12-storage --tab 2 --system storage
+          shot 13-net-host --tab 2 --system net --host 0
+          shot 14-settings --tab 3
+          shot 15-history --tab 1 --history
+          shot 16-disks --tab 2 --system disks
+          shot 17-map --tab 2 --system map
+          shot 18-search --tab 2 --search MBX
+          shot 19-explorer --tab 2 --explorer 20
+          shot 20-ad --tab 2 --system ad
+          shot 21-ksc --tab 2 --system ksc
+          shot 22-ssl --tab 2 --system ssl
+          shot 23-updates --tab 2 --system updates
+          shot 24-hyper --tab 2 --system hyper
+          shot 25-charts --tab 0 --charts
+          shot 28-overview-top --tab 0
+          shot 26-panels --tab 4 --panelset stats,cpu,band
+          shot 27-panels2 --tab 4 --panelset status,xy
+          shot 33-stack --tab 4 --panelset stack,hist
+          shot 34-timeline --tab 4 --panelset timeline,donut
+          shot 35-rows --tab 4
+          shot 29-compare --tab 2 --screen compare
+          shot 30-vcal --tab 2 --screen vcal
+          shot 31-duty --tab 4 --screen duty
+          shot 32-problems --tab 1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shots
+          path: shots
