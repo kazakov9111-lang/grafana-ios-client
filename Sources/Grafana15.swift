@@ -386,11 +386,10 @@ struct InventoryView: View {
             let pins = shown.filter { $0.lat != nil && $0.lon != nil }
             if !pins.isEmpty {
                 Section {
-                    Map {
-                        ForEach(pins) { h in
+                    Map(initialPosition: .automatic) {
+                        ForEach(pins) { (h: InvHost) in
                             Annotation(shortName(h.name), coordinate: CLLocationCoordinate2D(latitude: h.lat ?? 0, longitude: h.lon ?? 0)) {
-                                Circle().fill((levels[h.name] ?? .ok) == .ok ? Color.green : (levels[h.name] ?? .ok).color)
-                                    .frame(width: 14, height: 14).overlay(Circle().stroke(.white, lineWidth: 2))
+                                pinDot(h)
                             }
                         }
                     }
@@ -423,6 +422,12 @@ struct InventoryView: View {
         .searchable(text: $q, prompt: "Имя, серийный номер, модель, место")
         .navigationTitle("Инвентарь")
         .task { await load() }
+    }
+
+    private func pinDot(_ h: InvHost) -> some View {
+        let l = levels[h.name] ?? .ok
+        return Circle().fill(l == .ok ? Color.green : l.color)
+            .frame(width: 14, height: 14).overlay(Circle().stroke(Color.white, lineWidth: 2))
     }
 
     private func load() async {

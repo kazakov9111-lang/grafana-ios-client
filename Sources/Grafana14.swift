@@ -369,7 +369,7 @@ struct ProblemTimelineSection: View {
                 Text("Хронология")
                 Spacer()
                 if sent + failed > 0 {
-                    Text("уведомлений \(sent)" + (failed > 0 ? " · ошибок \(failed)" : "")).foregroundStyle(failed > 0 ? .red : .secondary)
+                    Text("уведомлений \(sent)" + (failed > 0 ? " · ошибок \(failed)" : "")).foregroundStyle(failed > 0 ? Color.red : Color.secondary)
                 }
             }
         }
