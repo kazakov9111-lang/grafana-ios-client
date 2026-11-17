@@ -11,6 +11,8 @@ struct Problem: Identifiable, Hashable, Codable {
     let clock: Date
     let acked: Bool
     let host: String
+    var tags: [String]? = nil
+    var groups: [String]? = nil
 }
 
 extension Session {
@@ -41,6 +43,7 @@ extension Session {
     func loadProblems() async throws -> [Problem] {
         let probs = try await zabbix("problem.get", [
             "output": .array(["eventid", "name", "severity", "clock", "acknowledged", "objectid"].map { .string($0) }),
+            "selectTags": .array([.string("tag"), .string("value")]),
             "severities": .array([3, 4, 5].map { .number(Double($0)) }),
             "recent": .bool(false),
             "suppressed": .bool(false),
@@ -50,15 +53,20 @@ extension Session {
         ])
         // имена хостов лежат у триггеров
         var hostByTrigger: [String: String] = [:]
+        var groupsByTrigger: [String: [String]] = [:]
         let ids = Array(Set(probs.compactMap { $0["objectid"].string }))
         for chunk in stride(from: 0, to: ids.count, by: 100).map({ Array(ids[$0..<min($0 + 100, ids.count)]) }) {
             let trig = try await zabbix("trigger.get", [
                 "triggerids": .array(chunk.map { .string($0) }),
                 "output": .array([.string("triggerid")]),
-                "selectHosts": .array([.string("name")])
+                "selectHosts": .array([.string("name")]),
+                "selectHostGroups": .array([.string("name")])
             ])
             for t in trig {
-                if let id = t["triggerid"].string { hostByTrigger[id] = t["hosts"][0]["name"].string ?? "" }
+                if let id = t["triggerid"].string {
+                    hostByTrigger[id] = t["hosts"][0]["name"].string ?? ""
+                    groupsByTrigger[id] = t["hostgroups"].array.compactMap { $0["name"].string }
+                }
             }
         }
         return probs.map { p in
@@ -68,7 +76,13 @@ extension Session {
                     severity: p["severity"].int ?? 3,
                     clock: Date(timeIntervalSince1970: p["clock"].double ?? 0),
                     acked: p["acknowledged"].string == "1",
-                    host: hostByTrigger[p["objectid"].string ?? ""] ?? "")
+                    host: hostByTrigger[p["objectid"].string ?? ""] ?? "",
+                    tags: p["tags"].array.compactMap { t in
+                        guard let k = t["tag"].string, !k.isEmpty else { return nil }
+                        let v = t["value"].string ?? ""
+                        return v.isEmpty ? k : k + ":" + v
+                    },
+                    groups: groupsByTrigger[p["objectid"].string ?? ""])
         }
     }
 
@@ -262,7 +276,34 @@ struct ProblemsView: View {
     @State private var rootCause: ProblemGroup?
     @State private var showMaint = Launch.screen == "maint"
     @State private var cachedAt: Date?
+    @ObservedObject private var filters = ProblemFilters.shared
+    @AppStorage("swipeLeft") private var swipeLeft = "ack"
+    @AppStorage("swipeLeft2") private var swipeLeft2 = "comment"
+    @AppStorage("swipeRight") private var swipeRight = "seen"
     private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+    @ViewBuilder private func swipeButton(_ act: String, _ p: Problem) -> some View {
+        switch act {
+        case "ack":
+            if !p.acked { Button { quickAck = p } label: { Label("Принять", systemImage: "checkmark.circle.fill") }.tint(.green) }
+        case "comment":
+            Button { ackTarget = p } label: { Label("Коммент.", systemImage: "text.bubble.fill") }.tint(.blue)
+        case "snooze":
+            Button {
+                Task {
+                    guard await FaceGate.ok("Отложить на час") else { return }
+                    do { try await session.suppress(p, until: Date().addingTimeInterval(3600)); Haptics.success(); await load() }
+                    catch { Haptics.error(); ackError = error.localizedDescription }
+                }
+            } label: { Label("На час", systemImage: "moon.zzz.fill") }.tint(.indigo)
+        case "seen":
+            Button { filters.toggleSeen(p.id) } label: {
+                Label(filters.seen.contains(p.id) ? "Не просм." : "Просмотр.", systemImage: filters.seen.contains(p.id) ? "eye.slash" : "eye")
+            }.tint(.teal)
+        default:
+            EmptyView()
+        }
+    }
 
     @ViewBuilder private func row(_ p: Problem) -> some View {
         if selecting {
@@ -281,11 +322,10 @@ struct ProblemsView: View {
         } else {
             NavigationLink(value: p) { ProblemRow(p: p) }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if !p.acked {
-                        Button { quickAck = p } label: { Label("Принять", systemImage: "checkmark.circle.fill") }.tint(.green)
-                        Button { ackTarget = p } label: { Label("Коммент.", systemImage: "text.bubble.fill") }.tint(.blue)
-                    }
+                    swipeButton(swipeLeft, p)
+                    if swipeLeft2 != swipeLeft { swipeButton(swipeLeft2, p) }
                 }
+                .swipeActions(edge: .leading, allowsFullSwipe: true) { swipeButton(swipeRight, p) }
         }
     }
 
@@ -314,7 +354,7 @@ struct ProblemsView: View {
 
     private var shown: [Problem] {
         let q = router.problemSearch.trimmingCharacters(in: .whitespaces)
-        return problems
+        return filters.apply(problems)
             .filter { $0.severity >= minSeverity }
             .filter { q.isEmpty || $0.name.localizedCaseInsensitiveContains(q) || $0.host.localizedCaseInsensitiveContains(q) }
             .sorted { ($0.severity, $0.clock) > ($1.severity, $1.clock) }
@@ -343,6 +383,7 @@ struct ProblemsView: View {
                             Text(u, style: .time).font(.caption2).foregroundStyle(.secondary)
                         }
                     }
+                    ProblemChipsBar(problems: problems)
                 }
                 if let error { Text(error).foregroundStyle(.orange).font(.footnote) }
                 if shown.isEmpty && !loading && error == nil {
@@ -455,6 +496,7 @@ struct ProblemsView: View {
                         Button { showShift = true } label: { Label("Передача смены", systemImage: "person.2.badge.gearshape") }
                         Button { showMaint = true } label: { Label("Плановые работы", systemImage: "wrench.and.screwdriver") }
                         Toggle(isOn: $grouped) { Label("Группировать одновременные", systemImage: "link") }
+                        Button { for p in shown { filters.markSeen(p.id) } } label: { Label("Отметить все просмотренными", systemImage: "eye") }
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -488,6 +530,8 @@ struct ProblemsView: View {
             LiveStatus.update(problems: fresh)
             cachedAt = nil
             ProblemCache.save(fresh)
+            filters.sync(fresh)
+            Badge.set(Badge.count(fresh))
             Notifier.remember(fresh)
             Task { await ProblemSparkStore.shared.refresh(session, fresh) }
             if let i = Launch.problem, path.isEmpty, let p = shown[safe: i] { path = [p] }
@@ -504,12 +548,21 @@ struct ProblemsView: View {
 struct ProblemRow: View {
     let p: Problem
     @ObservedObject private var sparks = ProblemSparkStore.shared
+    @ObservedObject private var filters = ProblemFilters.shared
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             RoundedRectangle(cornerRadius: 2).fill(sevColor(p.severity)).frame(width: 4)
             VStack(alignment: .leading, spacing: 3) {
-                Text(p.name).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    if !filters.seen.contains(p.id) && UserDefaults.standard.object(forKey: "seenEvents") != nil {
+                        Circle().fill(Color.blue).frame(width: 8, height: 8)
+                    }
+                    Text(p.name).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                }
+                if let t = p.tags, !t.isEmpty {
+                    Text(t.prefix(3).map { "#" + $0 }.joined(separator: " ")).font(.caption2).foregroundStyle(.blue).lineLimit(1)
+                }
                 HStack(spacing: 6) {
                     if !p.host.isEmpty { Text(p.host).lineLimit(1) }
                     Text("· " + sevName(p.severity))
@@ -582,6 +635,7 @@ struct ProblemDetailView: View {
             }
             RunbookSection(problem: problem)
             TriggerHelpSection(problem: problem)
+            ProblemTimelineSection(problem: problem)
             PastOccurrencesSection(problem: problem)
             if let items = detail?.items, !items.isEmpty {
                 Section("Показатели триггера") {
@@ -608,6 +662,10 @@ struct ProblemDetailView: View {
         }
         .navigationTitle("Проблема")
         .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            ProblemActionBar(problem: problem, acked: acked) { showAck = true }
+        }
+        .onAppear { ProblemFilters.shared.markSeen(problem.id) }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

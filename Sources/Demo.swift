@@ -121,6 +121,17 @@ enum Demo {
         Dictionary(uniqueKeysWithValues: groups.enumerated().map { ($0.element, String($0.offset + 1)) })
     }
 
+    static func demoTags(_ name: String, _ host: String) -> [(String, String)] {
+        let n = (name + " " + host).lowercased()
+        var t: [(String, String)] = []
+        if n.contains("mbx") || n.contains("exchange") || n.contains("почт") { t.append(("service", "mail")) }
+        if n.contains("icmp") || n.contains("канал") || n.contains("mikrotik") { t.append(("service", "network")) }
+        if n.contains("veeam") || n.contains("бэкап") { t.append(("service", "backup")) }
+        if n.contains("hyper") || n.contains("обновлен") { t.append(("scope", "os")) }
+        if n.contains("безопасн") { t.append(("scope", "security")) }
+        return t
+    }
+
     // MARK: ответы API
 
     static func respond(path: String, method: String, body: JSON?) -> JSON {
@@ -150,12 +161,14 @@ enum Demo {
             }.map { .object(["hostid": .string($0.id), "name": .string($0.name),
                              "maintenance_status": .string(maintenanceIds.contains($0.id) ? "1" : "0")]) })
         case "item.get":
+            let iids = Set(params["itemids"].array.compactMap { $0.string })
             let hids = Set(params["hostids"].array.compactMap { $0.string })
             let names = Set(params["filter"]["name"].array.compactMap { $0.string })
             let search = params["search"]["name"].string
             var out: [JSON] = []
-            for h in hosts where hids.isEmpty ? search != nil : hids.contains(h.id) {
+            for h in hosts where !iids.isEmpty || (hids.isEmpty ? search != nil : hids.contains(h.id)) {
                 for (i, it) in h.items.enumerated() {
+                    if !iids.isEmpty && !iids.contains("\(h.id)\(i)") { continue }
                     if !names.isEmpty && !names.contains(it.0) { continue }
                     if let search, !it.0.localizedCaseInsensitiveContains(search) && !h.name.localizedCaseInsensitiveContains(search) { continue }
                     out.append(.object(["itemid": .string("\(h.id)\(i)"), "name": .string(it.0),
@@ -189,7 +202,9 @@ enum Demo {
             return res(problems.enumerated().map { i, p in
                 .object(["eventid": .string("\(9000 + i)"), "name": .string(p.name), "severity": .string("\(p.sev)"),
                          "clock": .string(String(Int(Date().timeIntervalSince1970) - p.ageH * 3600)),
-                         "acknowledged": .string(p.acked ? "1" : "0"), "objectid": .string("\(100 + i)")])
+                         "acknowledged": .string(p.acked ? "1" : "0"), "objectid": .string("\(100 + i)"),
+                         "tags": .array(demoTags(p.name, p.host).map { t in
+                             .object(["tag": .string(t.0), "value": .string(t.1)]) })])
             })
         case "trigger.get":
             let ids = params["triggerids"].array.compactMap { $0.string }
@@ -205,6 +220,7 @@ enum Demo {
                     "description": .string(p.name),
                     "comments": .string("Проверьте состояние службы и доступность хоста. Если проблема повторяется — эскалировать дежурному."),
                     "hosts": .array([.object(["hostid": .string(host.id), "name": .string(p.host)])]),
+                    "hostgroups": .array([.object(["name": .string(host.group)])]),
                     "items": .array(host.items.prefix(3).enumerated().map { j, it in
                         .object(["itemid": .string("\(host.id)\(j)"), "name": .string(it.0),
                                  "lastvalue": .string(String(it.1)), "units": .string(it.2)])

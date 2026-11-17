@@ -835,33 +835,51 @@ struct DashView: View {
     @EnvironmentObject var session: Session
     let ref: DashRef
     @State private var panels: [GPanel] = []
-    @State private var vars: [String: String] = [:]
+    @State private var defs: [DashVar] = []
+    @State private var baseVars: [String: String] = [:]
     @State private var hours = 6.0
+    @State private var zoom: ClosedRange<Date>?
     @State private var error: String?
     @State private var dsByName: [String: JSON] = [:]
     @State private var defaultDS: JSON = .null
 
+    private var vars: [String: String] {
+        var m = baseVars
+        for d in defs { m[d.name] = d.value }
+        return m
+    }
+
+    private var key: String {
+        let v = defs.map { $0.name + "=" + $0.selected.joined(separator: ",") }.joined(separator: "&")
+        return "\(hours)-\(zoom?.lowerBound.timeIntervalSince1970 ?? 0)-\(v)"
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 12) {
+                DashVarBar(defs: $defs)
+                RangeChips(hours: $hours)
+                if let z = zoom {
+                    Button { zoom = nil } label: {
+                        Label("Сбросить масштаб (" + z.lowerBound.formatted(date: .omitted, time: .shortened) + "–" + z.upperBound.formatted(date: .omitted, time: .shortened) + ")",
+                              systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                    .font(.caption)
+                }
                 if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
                 if panels.isEmpty && error == nil { ProgressView().padding(40) }
                 ForEach(panels) { p in
-                    GPanelView(panel: p, vars: vars, hours: hours, resolveDS: resolve).id("\(p.id)-\(hours)")
+                    GPanelView(panel: p, vars: vars, from: zoom?.lowerBound ?? Date().addingTimeInterval(-hours * 3600),
+                               to: zoom?.upperBound ?? Date(), resolveDS: resolve) { zoom = $0 }
+                        .id("\(p.id)-\(key)")
                 }
             }
             .padding(12)
         }
-        .background(Color(white: 0.07))
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(ref.title)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            Menu {
-                ForEach([1.0, 6, 24, 168], id: \.self) { h in
-                    Button(h < 24 ? "\(Int(h)) ч" : (h == 24 ? "Сутки" : "Неделя")) { hours = h }
-                }
-            } label: { Label(hours < 24 ? "\(Int(hours)) ч" : (hours == 24 ? "24 ч" : "7 д"), systemImage: "clock") }
-        }
+        .onChange(of: hours) { _ in zoom = nil }
         .task { await load() }
     }
 
@@ -885,7 +903,17 @@ struct DashView: View {
                 if d["isDefault"].string == "true" || { if case .bool(true) = d["isDefault"] { return true }; return false }() { defaultDS = j }
             }
         }
-        vars = DashTemplating.vars(dash)
+        baseVars = DashTemplating.vars(dash)
+        var d = DashTemplating.defs(dash)
+        for (i, v) in dash["templating"]["list"].array.enumerated() where (v["type"].string ?? "query") == "query" {
+            guard let n = v["name"].string, let k = d.firstIndex(where: { $0.name == n }), d[k].options.isEmpty else { continue }
+            _ = i
+            d[k].options = await DashTemplating.zabbixOptions(v, session: session, vars: baseVars)
+        }
+        if Launch.demo, let k = d.firstIndex(where: { $0.name == "grp" }), d[k].options.isEmpty {
+            d[k].options = ["Hypervisors", "Domain Controllers", "Exchange", "Linux servers"]
+        }
+        defs = d
         var flat: [JSON] = []
         for p in dash["panels"].array {
             if p["type"].string == "row" { flat += p["panels"].array } else { flat.append(p) }
@@ -904,13 +932,16 @@ struct GPanelView: View {
     @EnvironmentObject var session: Session
     let panel: GPanel
     let vars: [String: String]
-    let hours: Double
+    let from: Date
+    let to: Date
     let resolveDS: (JSON) -> JSON
+    var onZoom: ((ClosedRange<Date>) -> Void)? = nil
     @State private var res: PanelResult?
     @State private var visible = false
 
-    private var isStat: Bool { ["stat", "gauge", "singlestat", "bargauge"].contains(panel.type) }
-    private var isTable: Bool { panel.type == "table" || panel.type == "table-old" }
+    private var hours: Double { max(0.05, to.timeIntervalSince(from) / 3600) }
+    private var isStat: Bool { ["stat", "gauge", "singlestat", "bargauge", "piechart"].contains(panel.type) }
+    private var isTable: Bool { panel.type == "table" || panel.type == "table-old" || panel.type == "logs" }
     private var unit: String? { panel.unit == "percent" || panel.unit == "percentunit" ? "percent" : panel.unit }
 
     var body: some View {
@@ -928,12 +959,24 @@ struct GPanelView: View {
         } else if let res {
             if let e = res.error, res.series.isEmpty, res.table == nil {
                 Text(e).font(.caption).foregroundStyle(.orange)
+            } else if panel.type == "logs" {
+                LogsPanelBody(lines: (res.table?.rows ?? []).map { $0.joined(separator: "  ") } + res.series.compactMap(\.text))
             } else if isTable, let t = res.table {
                 tableView(t)
+            } else if panel.type == "gauge" {
+                GaugePanelBody(series: res.series, unit: unit)
+            } else if panel.type == "bargauge" {
+                BarGaugePanelBody(series: res.series, unit: unit)
+            } else if panel.type == "piechart" {
+                PiePanelBody(series: res.series, unit: unit)
             } else if isStat {
                 statView(res.series)
+            } else if panel.type == "heatmap", !res.series.isEmpty {
+                HeatmapPanelBody(series: res.series)
+            } else if panel.type == "state-timeline" || panel.type == "status-history", !res.series.isEmpty {
+                StateTimelinePanelBody(series: res.series)
             } else if !res.series.isEmpty {
-                chart(res.series)
+                InteractiveChart(series: res.series, unit: unit, height: 170, onZoom: onZoom)
             } else if let t = res.table {
                 tableView(t)
             } else {
@@ -995,8 +1038,8 @@ struct GPanelView: View {
             o["maxDataPoints"] = .number(300)
             return .object(o)
         }
-        let now = Date().timeIntervalSince1970 * 1000
-        let body: JSON = .object(["queries": .array(queries), "from": .string(String(Int(now - hours * 3_600_000))), "to": .string(String(Int(now)))])
+        let body: JSON = .object(["queries": .array(queries), "from": .string(String(Int(from.timeIntervalSince1970 * 1000))),
+                                  "to": .string(String(Int(to.timeIntervalSince1970 * 1000)))])
         do {
             let r = try await session.request("/api/ds/query", method: "POST", body: body)
             res = DashboardModel.parse(r, wantTable: isTable || isStat)
@@ -1033,13 +1076,19 @@ enum DemoDash {
                      "fieldConfig": .object(["defaults": .object(["unit": .string(unit)])])])
         }
         return .object([
-            "templating": .object(["list": .array([.object(["name": .string("grp"), "current": .object(["value": .string("$__all")])])])]),
+            "templating": .object(["list": .array([.object(["name": .string("grp"), "label": .string("Группа"), "type": .string("query"),
+                                                             "includeAll": .bool(true), "multi": .bool(true),
+                                                             "current": .object(["value": .string("$__all")])])])]),
             "panels": .array([
                 .object(["id": .number(90), "type": .string("text"), "title": .string("О дашборде"), "gridPos": .object(["y": .number(0)]),
                          "options": .object(["content": .string("Дашборд из Grafana, нарисованный **нативно**: любые панели «временной ряд», «статистика» и «таблица».")])]),
                 panel(1, "CPU серверов", "timeseries", target("$grp", "/.*/", "CPU utilization"), y: 1),
                 panel(2, "Память сейчас", "stat", target(serverGroups, "/.*/", "Memory utilization"), y: 2),
-                panel(3, "Задержка до филиалов", "timeseries", target("Mikrotik", "/.*/", "ICMP response time"), unit: "s", y: 3)
+                panel(3, "Задержка до филиалов", "timeseries", target("Mikrotik", "/.*/", "ICMP response time"), unit: "s", y: 3),
+                panel(4, "Память (шкалы)", "gauge", target(serverGroups, "/.*/", "Memory utilization"), y: 4),
+                panel(5, "CPU (полосы)", "bargauge", target("$grp", "/.*/", "CPU utilization"), y: 5),
+                panel(6, "CPU (тепловая карта)", "heatmap", target("$grp", "/.*/", "CPU utilization"), y: 6),
+                panel(7, "Доля памяти", "piechart", target(serverGroups, "/.*/", "Memory utilization"), y: 7)
             ])
         ])
     }

@@ -24,10 +24,11 @@ struct GrafanaApp: App {
             .environmentObject(pins)
             .environmentObject(chartSync)
             .environment(\.locale, Locale(identifier: "ru_RU"))
-            .preferredColorScheme(.dark)
+            .modifier(AppearanceMod())
+            .modifier(ShakeReporter())
             .onChange(of: phase) { newPhase in
                 if newPhase == .background { lock.lockIfNeeded(); Badge.schedule() }
-                if newPhase == .active { lock.checkTimeout(); Task { await lock.unlock() } }
+                if newPhase == .active { lock.checkTimeout(); Task { await lock.unlock(); await Watchdog.check(session) } }
             }
             .task {
                 Badge.session = session
@@ -201,6 +202,17 @@ struct SettingsView: View {
                     Text("Наклейка на стойке открывает карточку хоста: метрики, проблемы, плановые работы и скрипты. Подойдёт и обычная камера iPhone.")
                 }
                 Section {
+                    AppearanceSettings()
+                } header: { Text("Вид") } footer: {
+                    Text("Светлая тема — новая: отдельные полноэкранные режимы (стена, NOC, AR) остаются тёмными. Встряхните телефон на любом экране, чтобы отправить отчёт об ошибке со снимком экрана.")
+                }
+                Section {
+                    NavigationLink { SwipeSettingsView() } label: { Label("Свайпы и значок на иконке", systemImage: "hand.draw") }
+                    NavigationLink { ExcludedGroupsView() } label: { Label("Исключённые группы", systemImage: "eye.slash") }
+                    NavigationLink { WatchdogSettingsView() } label: { Label("Сторож мониторинга", systemImage: "eye.trianglebadge.exclamationmark") }
+                    NavigationLink { DutyRosterView() } label: { Label("График дежурств", systemImage: "calendar.badge.clock") }
+                } header: { Text("Проблемы и уведомления") }
+                Section {
                     Toggle(isOn: $notifyNew) { Label("Уведомлять о новых высоких", systemImage: "bell.badge") }
                     Toggle(isOn: $liveActivity) { Label("Проблемы на экране блокировки", systemImage: "platter.filled.bottom.iphone") }
                     Toggle(isOn: $glassCards) { Label("Стеклянные карточки", systemImage: "square.on.square.intersection.dashed") }
@@ -231,7 +243,7 @@ struct SettingsView: View {
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 3.0" + (SignInfo.expiry.map { " · подпись до " + ruDate($0) } ?? "")).font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 3.1" + (SignInfo.expiry.map { " · подпись до " + ruDate($0) } ?? "")).font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }

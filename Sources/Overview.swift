@@ -108,7 +108,10 @@ struct OverviewView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     SignBanner()
+                    WatchdogBanner()
+                    OnDutyCard()
                     summary
+                    FavoritesCard()
                     PanelStatsGrid(model: panels)
                     if !Launch.charts {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {

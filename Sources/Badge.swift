@@ -8,7 +8,14 @@ enum Badge {
     static let taskId = "com.personal.grafana.refresh"
     @MainActor static weak var session: Session?
 
-    static func count(_ ps: [Problem]) -> Int { ps.filter { $0.severity >= 3 && !$0.acked }.count }
+    static func count(_ ps: [Problem]) -> Int {
+        let v = ProblemFilters.visible(ps).filter { $0.severity >= 3 }
+        if UserDefaults.standard.string(forKey: "badgeMode") == "unseen" {
+            let s = ProblemFilters.seenIds
+            return v.filter { !s.contains($0.id) }.count
+        }
+        return v.filter { !$0.acked }.count
+    }
 
     static func requestAccess() async {
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.badge, .alert, .sound])
@@ -27,6 +34,7 @@ enum Badge {
                 await ActionQueue.shared.flush(s)
                 if let ps = try? await s.loadProblems() { set(count(ps)); Notifier.notifyNew(ps) }
                 await MorningSummary.maybeSend(s)
+                await Watchdog.check(s)
                 task.setTaskCompleted(success: true)
             }
             task.expirationHandler = { work.cancel() }

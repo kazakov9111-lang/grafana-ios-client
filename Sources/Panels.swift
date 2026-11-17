@@ -325,6 +325,7 @@ struct PanelsView: View {
     @State private var wall = Launch.screen == "wall" || Launch.screen == "wall-night"
     @State private var dashes = Launch.screen == "dashes" || Launch.screen == "dash"
     @State private var searchAll = Launch.screen == "search-all"
+    @State private var noc = Launch.screen == "noc"
     @State private var report = Launch.screen == "report" || Launch.screen == "report-light"
     @State private var editMine = Launch.screen == "mine-edit"
     @State private var thrSheet = Launch.screen == "thr"
@@ -440,7 +441,7 @@ struct PanelsView: View {
             .background(Color(white: 0.07))
             .navigationTitle("Панели")
             .navigationDestination(for: HostMini.self) { HostExplorerView(host: $0) }
-            .navigationDestination(for: String.self) { id in if id == "sla" { SLAView() } }
+            .navigationDestination(for: String.self) { id in if id == "sla" { SLAView() } else if id == "zdash" { ZabbixDashListView() } }
             .environment(\.drillDown, { drill($0) })
             .refreshable { await model.load(session: session) }
             .task { await model.load(session: session) }
@@ -464,6 +465,7 @@ struct PanelsView: View {
             .fullScreenCover(isPresented: $wall) { WallView(model: model, ids: carouselIds) { panel($0) } }
             .sheet(isPresented: $searchAll) { SearchAllView() }
             .sheet(isPresented: $dashes) { DashListView() }
+            .fullScreenCover(isPresented: $noc) { NOCGridView() }
             .sheet(isPresented: $report) { ReportSheet() }
             .sheet(isPresented: $editMine) { CustomPanelsEditor() }
             .sheet(isPresented: $rangeSheet) { CustomRangeSheet(model: model) }
@@ -475,6 +477,8 @@ struct PanelsView: View {
                         Button { duty = true } label: { Image(systemName: "tv") }
                         Menu {
                             Button { dashes = true } label: { Label("Дашборды Grafana", systemImage: "square.grid.3x2") }
+                            Button { path.append("zdash") } label: { Label("Дашборды Zabbix", systemImage: "rectangle.3.group") }
+                            Button { noc = true } label: { Label("NOC-сетка всех хостов", systemImage: "square.grid.4x3.fill") }
                             Button { wall = true } label: { Label("Режим «стена» (альбомный)", systemImage: "tv.and.mediabox") }
                             Button { carousel = true } label: { Label("Карусель панелей", systemImage: "rectangle.on.rectangle") }
                             Button { searchAll = true } label: { Label("Поиск по всему", systemImage: "magnifyingglass") }

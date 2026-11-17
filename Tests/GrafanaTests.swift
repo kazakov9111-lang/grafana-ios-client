@@ -47,6 +47,48 @@ final class GrafanaTests: XCTestCase {
         XCTAssertEqual(t["group"]["filter"].string, "/.*/")
     }
 
+    func testExcludedOnlyWhenAllGroupsExcluded() {
+        let p = Problem(id: "1", triggerId: "1", name: "x", severity: 4, clock: Date(), acked: false, host: "h",
+                        tags: nil, groups: ["Workstations", "Office"])
+        XCTAssertFalse(ProblemFilters.isExcluded(p, ["Workstations"]))
+        XCTAssertTrue(ProblemFilters.isExcluded(p, ["Workstations", "Office"]))
+        let noGroups = Problem(id: "2", triggerId: "2", name: "y", severity: 4, clock: Date(), acked: false, host: "h")
+        XCTAssertFalse(ProblemFilters.isExcluded(noGroups, ["Workstations"]))
+    }
+
+    func testDashVarValue() {
+        var v = DashVar(name: "h", label: "Хост", options: ["A", "B"], multi: true, includeAll: true, selected: ["$__all"])
+        XCTAssertEqual(v.value, "/.*/")
+        v.selected = ["A"]
+        XCTAssertEqual(v.value, "A")
+        v.selected = ["A", "B"]
+        XCTAssertEqual(v.value, "/^(A|B)$/")
+        XCTAssertEqual(v.display, "2 выбрано")
+    }
+
+    func testRedaction() {
+        let r = BugReport.redact("Сервер https://grafana.corp.example/x, 10.1.2.3, a.b@corp.example, user ivanov",
+                                 server: "https://grafana.corp.example", user: "ivanov")
+        XCTAssertFalse(r.contains("10.1.2.3"))
+        XCTAssertFalse(r.contains("a.b@corp.example"))
+        XCTAssertFalse(r.contains("ivanov"))
+        XCTAssertFalse(r.contains("grafana.corp.example"))
+    }
+
+    func testStatusPageCategories() {
+        let ps = [Problem(id: "1", triggerId: "1", name: "Exchange: очередь растёт", severity: 4, clock: Date(), acked: false, host: "MBX1")]
+        let l = StatusPage.lines(ps)
+        XCTAssertEqual(l.first { $0.title == "Почта" }?.state, 2)
+        XCTAssertEqual(l.first { $0.title.hasPrefix("Файлы") }?.state, 0)
+    }
+
+    func testAckTextBits() {
+        let (t, _, _) = ProblemTimelineSection.ackText(2 | 4, .object([:]))
+        XCTAssertEqual(t, "подтвердил")
+        let (t2, _, _) = ProblemTimelineSection.ackText(1, .object([:]))
+        XCTAssertEqual(t2, "закрыл")
+    }
+
     func testQuietWindowWrapsMidnight() {
         UserDefaults.standard.set(true, forKey: "quietOn")
         UserDefaults.standard.set(23, forKey: "quietFrom")

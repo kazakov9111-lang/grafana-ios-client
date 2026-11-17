@@ -306,6 +306,10 @@ struct SystemsView: View {
                                 NavigationLink(value: "racks") { simpleCard("server.rack", "Стойки", "Серверы по юнитам с их состоянием", color: Level.ok.color) }
                                 NavigationLink(value: "ar") { simpleCard("arkit", "AR в серверной", "Карточки над QR-наклейками", color: Level.ok.color) }
                                 NavigationLink(value: "audit") { simpleCard("person.badge.clock", "Кто менял Zabbix", "Журнал аудита за неделю", color: Level.ok.color) }
+                                NavigationLink(value: "zdash") { simpleCard("rectangle.3.group", "Дашборды Zabbix", "Виджеты Zabbix нативно", color: Level.ok.color) }
+                                NavigationLink(value: "slaz") { simpleCard("gauge.with.needle", "SLA и веб-проверки", "Сервисы Zabbix и веб-сценарии", color: Level.ok.color) }
+                                NavigationLink(value: "inventory") { simpleCard("shippingbox", "Инвентарь", "Серийники, модели, места и стойки", color: Level.ok.color) }
+                                NavigationLink(value: "status") { simpleCard("megaphone", "Статус для сотрудников", "Сообщение в Telegram без техники", color: Level.ok.color) }
                             }
                         }
                     }
@@ -335,6 +339,11 @@ struct SystemsView: View {
                 case "rack": RackListView()
                 case "audit": AuditView()
                 case "ar": ARServerRoomView()
+                case "zdash": ZabbixDashListView()
+                case "zdash1": ZabbixDashView(ref: ZDemo.dashes[0])
+                case "slaz": ServicesSLAView()
+                case "inventory": InventoryView()
+                case "status": StatusPageView()
                 default:
                     if let s = systemScreens.first(where: { $0.id == id }) {
                         SystemDetailView(screen: s, model: model, path: $path)

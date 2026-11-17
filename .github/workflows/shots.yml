@@ -123,6 +123,20 @@ jobs:
           shot 87-dashes --tab 4 --screen dashes
           WAIT=14 shot 88-dash --tab 4 --screen dash
           WAIT=12 shot 89-wall-night --tab 4 --screen wall-night
+          shot 90-chips --tab 1 --screen chips
+          WAIT=11 shot 91-detail-bar --tab 1 --problem 0
+          shot 92-zdash-list --tab 2 --system zdash
+          WAIT=12 shot 93-zdash --tab 2 --system zdash1
+          shot 94-slaz --tab 2 --system slaz
+          shot 95-inventory --tab 2 --system inventory
+          shot 96-status --tab 2 --system status
+          shot 97-noc --tab 4 --screen noc
+          shot 98-overview --tab 0 --screen blind
+          shot 99-light --tab 0 --theme light
+          shot 100-light-problems --tab 1 --theme light
+          WAIT=15 shot 101-dash-vars --tab 4 --screen dash
+          shot 102-bug --tab 0 --screen bug
+          shot 103-settings --tab 3
           mkdir -p shots/crash
           cp ~/Library/Logs/DiagnosticReports/Grafana* shots/crash/ 2>/dev/null || true
           ls shots/crash
