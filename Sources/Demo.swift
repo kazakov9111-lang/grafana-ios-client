@@ -53,11 +53,11 @@ enum Demo {
     }
 
     static let hosts: [DHost] = [
-        mk("1", "Moscow Selectel", rtt: 0.012), mk("2", "Moscow", rtt: 0.009), mk("3", "Kaliningrad", ping: 0, loss: 100, rtt: 0),
-        mk("4", "Ural", loss: 8, rtt: 0.191), mk("5", "Piter", rtt: 0.027), mk("6", "Murmansk", rtt: 0.034),
-        mk("7", "Belovo", rtt: 0.118), mk("8", "Nakhodka", rtt: 0.097), mk("9", "Voronej", rtt: 0.031),
-        mk("12", "Novgorod", rtt: 0.022), mk("13", "Rostov", rtt: 0.041), mk("14", "Novoross", rtt: 0.052),
-        mk("15", "Volgograd", rtt: 0.047), mk("16", "Saratov", rtt: 0.038), mk("17", "Angarsk", rtt: 0.163),
+        mk("1", "Moscow DC", rtt: 0.012), mk("2", "Moscow", rtt: 0.009), mk("3", "Kaliningrad", ping: 0, loss: 100, rtt: 0),
+        mk("4", "Kazan", loss: 8, rtt: 0.191), mk("5", "Piter", rtt: 0.027), mk("6", "Murmansk", rtt: 0.034),
+        mk("7", "Samara", rtt: 0.118), mk("8", "Vladivostok", rtt: 0.097), mk("9", "Voronezh", rtt: 0.031),
+        mk("12", "Nizhny Novgorod", rtt: 0.022), mk("13", "Rostov", rtt: 0.041), mk("14", "Sochi", rtt: 0.052),
+        mk("15", "Volgograd", rtt: 0.047), mk("16", "Saratov", rtt: 0.038), mk("17", "Irkutsk", rtt: 0.163),
         srv("10", "DC1", "Domain Controllers", cpu: 24, mem: 61, disk: 48,
             extra: [("ADDS: LDAP Port is running", 1, ""), ("Active agent availability", 1, ""),
                     ("AD: Kerberos — разных учёток с ошибкой за 10 минут", 3, ""),

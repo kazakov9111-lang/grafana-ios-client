@@ -65,6 +65,7 @@ jobs:
           shot 33-stack --tab 4 --panelset stack,hist
           shot 34-timeline --tab 4 --panelset timeline,donut
           shot 35-rows --tab 4
+          shot 36-branches --tab 3 --screen branches
           shot 29-compare --tab 2 --screen compare
           shot 30-vcal --tab 2 --screen vcal
           shot 31-duty --tab 4 --screen duty

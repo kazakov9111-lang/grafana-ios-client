@@ -128,6 +128,7 @@ struct SettingsView: View {
     @EnvironmentObject var lock: AppLock
     @State private var zbxURL = UserDefaults.standard.string(forKey: "zbxURL") ?? ""
     @State private var zbxToken = Keychain.load(account: "zbxToken") ?? ""
+    @State private var showBranches = Launch.screen == "branches"
 
     var body: some View {
         NavigationStack {
@@ -143,6 +144,11 @@ struct SettingsView: View {
                 } header: { Text("Подтверждение проблем") } footer: {
                     Text("Нужно, если пользователь Zabbix в Grafana только читает. Создайте в Zabbix токен для учётки с правом подтверждать проблемы. Пусто — подтверждение идёт через Grafana.")
                 }
+                Section {
+                    NavigationLink { BranchEditorView() } label: {
+                        Label("Филиалы на карте", systemImage: "map")
+                    }
+                } footer: { Text("Города для карты филиалов: добавьте все свои вручную или одной кнопкой из Zabbix.") }
                 Section("Безопасность") {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
                 }
@@ -152,6 +158,7 @@ struct SettingsView: View {
                 Section { Text("Версия 2.2").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
+            .navigationDestination(isPresented: $showBranches) { BranchEditorView() }
             .onChange(of: zbxURL) { UserDefaults.standard.set($0, forKey: "zbxURL") }
             .onChange(of: zbxToken) { Keychain.save($0, account: "zbxToken") }
         }

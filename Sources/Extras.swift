@@ -524,25 +524,6 @@ struct DisksView: View {
 
 // MARK: Карта филиалов
 
-enum Branches {
-    static let list: [(host: String, city: String, lat: Double, lon: Double)] = [
-        ("Mikrotik - Moscow Selectel", "Москва · ЦОД", 55.7, 37.3),
-        ("Mikrotik - Moscow", "Москва · офис", 55.8, 37.85),
-        ("Mikrotik - Piter", "Санкт-Петербург", 59.94, 30.31),
-        ("Mikrotik - Novgorod", "Нижний Новгород", 56.33, 44),
-        ("Mikrotik - Kaliningrad", "Калининград", 54.71, 20.51),
-        ("Mikrotik - Murmansk", "Мурманск", 68.97, 33.08),
-        ("Mikrotik - Voronej", "Воронеж", 51.67, 39.18),
-        ("Mikrotik - Rostov", "Ростов-на-Дону", 47.23, 39.72),
-        ("Mikrotik - Novoross", "Новороссийск", 44.72, 37.77),
-        ("Mikrotik - Volgograd", "Волгоград", 48.71, 44.51),
-        ("Mikrotik - Saratov", "Саратов", 51.53, 46.03),
-        ("Mikrotik - Ural", "Екатеринбург", 56.84, 60.61),
-        ("Mikrotik - Belovo", "Белово", 54.42, 86.3),
-        ("Mikrotik - Angarsk", "Ангарск", 52.54, 103.89),
-        ("Mikrotik - Nakhodka", "Находка", 42.82, 132.87)
-    ]
-}
 
 struct BranchPoint: Identifiable {
     let id: String
@@ -595,6 +576,7 @@ struct BranchMapRepresentable: UIViewRepresentable {
             let p = MKMapPoint(CLLocationCoordinate2D(latitude: b.lat, longitude: b.lon))
             rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0.01, height: 0.01))
         }
+        if rect.isNull { rect = MKMapRect(x: 0, y: 0, width: 1, height: 1) }
         m.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 50, left: 56, bottom: 40, right: 50), animated: false)
         return m
     }
@@ -630,10 +612,11 @@ final class BranchAnnotation: NSObject, MKAnnotation {
 struct BranchMapView: View {
     @ObservedObject var model: SystemsModel
     @Binding var path: NavigationPath
+    @ObservedObject private var store = BranchStore.shared
 
     private var points: [BranchPoint] {
         let rows = model.rows["net"] ?? []
-        return Branches.list.map { b in
+        return store.items.filter { $0.hasCoords }.map { b in
             BranchPoint(id: b.host, city: b.city,
                         coord: CLLocationCoordinate2D(latitude: b.lat, longitude: b.lon),
                         row: rows.first { $0.name == b.host })
@@ -642,6 +625,12 @@ struct BranchMapView: View {
 
     var body: some View {
         List {
+            if store.items.isEmpty {
+                Section {
+                    Text("Список филиалов пуст. Откройте Настройки → Филиалы на карте и добавьте их вручную или одной кнопкой из Zabbix.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             Section {
                 BranchMapRepresentable(points: points) { id in
                     if let r = (model.rows["net"] ?? []).first(where: { $0.id == id }) { path.append(r) }
