@@ -124,7 +124,10 @@ final class Session: ObservableObject {
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(["user": user, "password": password])
-        let (data, resp) = try await urlSession.data(for: req)
+        let t0 = Date()
+        let data: Data, resp: URLResponse
+        do { (data, resp) = try await urlSession.data(for: req) }
+        catch { AppHealth.shared.fail(error.localizedDescription); throw error }
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         guard code == 200 else {
             let msg = (try? JSONDecoder().decode(JSON.self, from: data))?["message"].string
@@ -181,8 +184,10 @@ final class Session: ObservableObject {
         guard (200..<300).contains(code) else {
             let msg = json["message"].string ?? json["error"].string
                 ?? json["results"].object.values.compactMap { $0["error"].string }.first
+            AppHealth.shared.fail(msg ?? "HTTP \(code)")
             throw APIError(message: msg ?? "Ошибка сервера (HTTP \(code))")
         }
+        AppHealth.shared.ok(ms: Int(Date().timeIntervalSince(t0) * 1000))
         return json
     }
 

@@ -320,6 +320,8 @@ func presentShare(_ items: [Any]) {
 struct ReportPage: View {
     @ObservedObject var model: PanelsModel
     let sla: [SLARow]
+    var comment: String = ""
+    var light: Bool = false
 
     private var sev: [(Int, Int)] { [5, 4, 3].map { s in (s, model.problems.filter { $0.severity == s }.count) } }
 
@@ -332,6 +334,15 @@ struct ReportPage: View {
                 }
                 Spacer()
                 Image(systemName: "chart.xyaxis.line").font(.title).foregroundStyle(.orange)
+            }
+            if !comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack(alignment: .top, spacing: 8) {
+                    RoundedRectangle(cornerRadius: 2).fill(Color.orange).frame(width: 3)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Итог недели").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                        Text(comment).font(.subheadline)
+                    }
+                }
             }
             PanelStatsGrid(model: model)
             PanelCard(title: "Доступность филиалов", subtitle: "7 дней", shareable: false, expandable: false) {
@@ -370,8 +381,9 @@ struct ReportPage: View {
             }
         }
         .padding(16)
-        .background(Color(white: 0.07))
-        .environment(\.colorScheme, .dark)
+        .background(light ? Color.white : Color(white: 0.07))
+        .environment(\.colorScheme, light ? .light : .dark)
+        .environment(\.reportLight, light)
     }
 }
 
@@ -382,14 +394,27 @@ struct ReportSheet: View {
     @StateObject private var sla = SLAModel()
     @State private var ready = false
     @State private var note: String?
+    @State private var comment = ""
+    @State private var light = Launch.screen == "report-light"
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            VStack(spacing: 0) {
                 if ready {
-                    ReportPage(model: model, sla: sla.rows).environmentObject(ChartSync())
-                } else {
-                    ProgressView("Собираю данные…").padding(60)
+                    VStack(alignment: .leading, spacing: 8) {
+                        TextField("Итог недели для руководителя (необязательно)", text: $comment, axis: .vertical)
+                            .lineLimit(1...4).padding(10)
+                            .background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 8))
+                        Toggle("Светлая тема (для печати)", isOn: $light).font(.subheadline)
+                    }
+                    .padding(12)
+                }
+                ScrollView {
+                    if ready {
+                        ReportPage(model: model, sla: sla.rows, comment: comment, light: light).environmentObject(ChartSync())
+                    } else {
+                        ProgressView("Собираю данные…").padding(60)
+                    }
                 }
             }
             .background(Color(white: 0.07))
@@ -410,7 +435,7 @@ struct ReportSheet: View {
     }
 
     @MainActor private func makePDF() {
-        let content = ReportPage(model: model, sla: sla.rows).frame(width: 560).environmentObject(ChartSync())
+        let content = ReportPage(model: model, sla: sla.rows, comment: comment, light: light).frame(width: 560).environmentObject(ChartSync())
         let r = ImageRenderer(content: content)
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Otchet-\(f.string(from: Date())).pdf")

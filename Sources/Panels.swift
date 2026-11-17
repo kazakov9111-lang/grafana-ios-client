@@ -176,6 +176,7 @@ func shortName(_ n: String) -> String {
 // MARK: Контейнеры
 
 struct PanelCard<Content: View>: View {
+    @Environment(\.reportLight) private var reportLight
     let title: String
     var subtitle: String?
     var shareable = true
@@ -205,7 +206,7 @@ struct PanelCard<Content: View>: View {
             content()
         }
         .padding(12)
-        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color(white: reportLight ? 1 : 0.11), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06)))
         .fullScreenCover(isPresented: $full) { PanelFullScreen(title: title, subtitle: subtitle, content: content) }
         .onAppear { if Launch.screen == "fullscreen" && title == "Загрузка CPU" { full = true } }
@@ -213,6 +214,7 @@ struct PanelCard<Content: View>: View {
 }
 
 struct StatPanel: View {
+    @Environment(\.reportLight) private var reportLight
     let title: String
     let value: String
     let color: Color
@@ -251,7 +253,7 @@ struct StatPanel: View {
             .padding(10)
         }
         .frame(height: 112)
-        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color(white: reportLight ? 1 : 0.11), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.25)))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -313,7 +315,7 @@ struct PanelsView: View {
     @ObservedObject private var customStore = CustomPanelStore.shared
     @State private var duty = Launch.screen == "duty"
     @State private var carousel = Launch.screen == "carousel"
-    @State private var report = Launch.screen == "report"
+    @State private var report = Launch.screen == "report" || Launch.screen == "report-light"
     @State private var editMine = Launch.screen == "mine-edit"
     @State private var thrSheet = Launch.screen == "thr"
     @State private var rangeSheet = Launch.screen == "range"
@@ -413,7 +415,7 @@ struct PanelsView: View {
                             ForEach(["nodes", "rtt", "box", "hist", "timeline"], id: \.self) { panel($0) }
                         }
                         DashRow(id: "problems", title: "Проблемы", icon: "exclamationmark.triangle") {
-                            ForEach(["stack", "calendar", "noisy", "donut", "honey"], id: \.self) { panel($0) }
+                            ForEach(["stack", "calendar", "hourheat", "noisy", "donut", "honey"], id: \.self) { panel($0) }
                         }
                         DashRow(id: "disks", title: "Диски", icon: "internaldrive") {
                             ForEach(["dfc", "treemap", "disk"], id: \.self) { panel($0) }
@@ -490,6 +492,7 @@ struct PanelsView: View {
         case "nodes": NodeGraphPanel(rows: model.systems.rows["net"] ?? [], branches: BranchStore.shared.items)
         case "box": BoxPlotPanel(series: model.rtt)
         case "calendar": CalendarHeatPanel(events: model.history90)
+        case "hourheat": HourHeatPanel(events: model.history90)
         case "noisy": NoisyHostsPanel(events: model.history90)
         case "dfc": DiskForecastPanel(disks: model.diskFC, series: model.diskSeries)
         case "band": BandPanel(series: model.cpu)
@@ -551,6 +554,7 @@ struct PanelsView: View {
                     Circle().fill(seriesPalette[i % seriesPalette.count]).frame(width: 8, height: 8)
                     Text(shortName(x.name)).font(.caption).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                     Text(formatValue(x.points.last?.v ?? 0, unit: unit)).frame(width: 56, alignment: .trailing)
+                        .foregroundStyle(unit == "percent" ? HostThrStore.shared.color(x.name, "cpu", x.points.last?.v ?? 0) : Color.primary)
                     Text(formatValue(x.points.map { $0.v }.max() ?? 0, unit: unit)).frame(width: 56, alignment: .trailing)
                         .foregroundStyle(.secondary)
                 }
@@ -733,7 +737,7 @@ struct PanelsView: View {
                 PanelCard(title: title, subtitle: subtitle) {
                     VStack(spacing: 8) {
                         ForEach(Array(rows), id: \.name) { r in
-                            let c: Color = Thr.color(r.v, warn: col == "disk" ? Thr.diskWarn : Thr.memWarn, bad: col == "disk" ? Thr.diskBad : Thr.memBad)
+                            let c: Color = HostThrStore.shared.color(r.name, col == "disk" ? "disk" : "mem", r.v)
                             VStack(spacing: 3) {
                                 HStack {
                                     Text(r.name).font(.caption).lineLimit(1)

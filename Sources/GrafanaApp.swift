@@ -131,6 +131,7 @@ struct SettingsView: View {
     @State private var zbxURL = UserDefaults.standard.string(forKey: "zbxURL") ?? ""
     @State private var zbxToken = Keychain.load(account: "zbxToken") ?? ""
     @State private var showBranches = Launch.screen == "branches"
+    @State private var showHealth = Launch.screen == "health"
 
     var body: some View {
         NavigationStack {
@@ -155,6 +156,8 @@ struct SettingsView: View {
                     NavigationLink { ThresholdsView() } label: { Label("Свои пороги", systemImage: "slider.horizontal.3") }
                     NavigationLink { AnnotationsListView() } label: { Label("Мои метки на графиках", systemImage: "pin") }
                     NavigationLink { BackupView() } label: { Label("Резервная копия настроек", systemImage: "externaldrive") }
+                    NavigationLink { HostThresholdsView() } label: { Label("Пороги по хостам", systemImage: "server.rack") }
+                    NavigationLink { HealthView() } label: { Label("Здоровье приложения", systemImage: "heart.text.square") }
                 }
                 Section("Безопасность") {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
@@ -162,10 +165,11 @@ struct SettingsView: View {
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.5").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 2.6").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }
+            .navigationDestination(isPresented: $showHealth) { HealthView() }
             .onChange(of: zbxURL) { UserDefaults.standard.set($0, forKey: "zbxURL") }
             .onChange(of: zbxToken) { Keychain.save($0, account: "zbxToken") }
         }

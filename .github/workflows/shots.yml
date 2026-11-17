@@ -88,6 +88,9 @@ jobs:
           shot 53-history --tab 1 --history
           shot 54-claim --tab 1 --problem 2
           shot 55-sla --tab 2 --screen sla
+          shot 56-heat --tab 4 --panelset hourheat,stack
+          shot 57-report-light --tab 4 --screen report-light
+          shot 58-settings-health --tab 3 --screen health
       - uses: actions/upload-artifact@v4
         with:
           name: shots
