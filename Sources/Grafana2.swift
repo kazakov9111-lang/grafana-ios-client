@@ -294,8 +294,8 @@ struct DiskForecastPanel: View {
                                 .foregroundStyle(l.color.opacity(0.9)).lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
                             PointMark(x: .value("t", e.t), y: .value("v", e.v)).foregroundStyle(l.color).symbolSize(70)
                                 .annotation(position: .top, spacing: 2) {
-                                    Text(e.t, format: .dateTime.day().month(.abbreviated).locale(Locale(identifier: "ru_RU")))
-                                        .font(.system(size: 9, weight: .semibold)).foregroundStyle(l.color)
+                                    Text(e.t, format: .dateTime.day().month(.twoDigits).locale(Locale(identifier: "ru_RU")))
+                                        .font(.system(size: 9, weight: .semibold)).foregroundStyle(l.color).fixedSize()
                                 }
                         }
                     }
