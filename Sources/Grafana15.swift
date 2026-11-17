@@ -388,7 +388,7 @@ struct InventoryView: View {
                 Section {
                     Map(initialPosition: .automatic) {
                         ForEach(pins) { (h: InvHost) in
-                            Annotation(shortName(h.name), coordinate: CLLocationCoordinate2D(latitude: h.lat ?? 0, longitude: h.lon ?? 0)) {
+                            MapKit.Annotation(shortName(h.name), coordinate: CLLocationCoordinate2D(latitude: h.lat ?? 0, longitude: h.lon ?? 0)) {
                                 pinDot(h)
                             }
                         }
