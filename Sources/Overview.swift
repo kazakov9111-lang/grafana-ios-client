@@ -96,6 +96,7 @@ struct OverviewView: View {
     @EnvironmentObject var pins: Pins
     @StateObject private var model = OverviewModel()
     @StateObject private var panels = PanelsModel()
+    @State private var ask = Launch.screen == "ask"
     @State private var path: NavigationPath = {
         var p = NavigationPath()
         if let c = Launch.check { p.append(c) }
@@ -125,7 +126,7 @@ struct OverviewView: View {
                 }
                 .padding(12)
             }
-            .background(Color(white: 0.07))
+            .background(StateBackground(severity: model.problems.map(\.severity).max() ?? 0))
             .navigationTitle("Обзор")
             .navigationDestination(for: Int.self) { id in
                 if let c = overviewChecks.first(where: { $0.id == id }) {
@@ -140,7 +141,11 @@ struct OverviewView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     if model.loading { ProgressView() }
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { ask = true } label: { Image(systemName: "sparkles").symbolEffect(.pulse, options: .repeating) }
+                }
             }
+            .sheet(isPresented: $ask) { AskView() }
         }
     }
 

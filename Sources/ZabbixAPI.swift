@@ -14,7 +14,7 @@ struct Problem: Identifiable, Hashable {
 }
 
 extension Session {
-    private func zabbixDS() async -> (uid: String, id: Int)? {
+    func zabbixDS() async -> (uid: String, id: Int)? {
         let list = await allDatasources()
         guard let d = list.first(where: { ($0["type"].string ?? "").contains("zabbix") }),
               let uid = d["uid"].string, let id = d["id"].int else { return nil }
@@ -246,7 +246,63 @@ struct ProblemsView: View {
     @State private var updated: Date?
     @State private var path: [Problem] = []
     @State private var showHistory = Launch.history
+    @State private var selecting = Launch.screen == "bulk"
+    @State private var selected: Set<String> = []
+    @State private var bulkConfirm = false
+    @State private var bulkBusy = false
+    @State private var showIncidents = Launch.screen == "incidents"
+    @State private var openIncident: UUID?
+    @State private var confetti = Launch.screen == "confetti"
+    @State private var seenCritical: Set<String>?
     private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+
+    @ViewBuilder private func row(_ p: Problem) -> some View {
+        if selecting {
+            Button {
+                if selected.contains(p.id) { selected.remove(p.id) } else { selected.insert(p.id) }
+                Haptics.tap()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: selected.contains(p.id) ? "checkmark.circle.fill" : "circle")
+                        .font(.title3).foregroundStyle(selected.contains(p.id) ? Color.orange : Color.secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                    ProblemRow(p: p)
+                }
+            }
+            .buttonStyle(.plain)
+        } else {
+            NavigationLink(value: p) { ProblemRow(p: p) }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if !p.acked {
+                        Button { quickAck = p } label: { Label("Принять", systemImage: "checkmark.circle.fill") }.tint(.green)
+                        Button { ackTarget = p } label: { Label("Коммент.", systemImage: "text.bubble.fill") }.tint(.blue)
+                    }
+                }
+        }
+    }
+
+    private var bulkBar: some View {
+        HStack(spacing: 10) {
+            Button { bulkConfirm = true } label: {
+                Label(bulkBusy ? "Подтверждаю…" : "Подтвердить \(selected.count)", systemImage: "checkmark.circle.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).tint(.green)
+            .disabled(selected.isEmpty || bulkBusy)
+            Button {
+                let i = IncidentStore.shared.create(from: problems.filter { selected.contains($0.id) })
+                selected = []; selecting = false
+                openIncident = i.id; showIncidents = true
+                Haptics.success()
+            } label: {
+                Label("В аварию", systemImage: "flame.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered).tint(.orange)
+            .disabled(selected.isEmpty)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.ultraThinMaterial)
+    }
 
     private var shown: [Problem] {
         let q = router.problemSearch.trimmingCharacters(in: .whitespaces)
@@ -283,16 +339,25 @@ struct ProblemsView: View {
                 if let error { Text(error).foregroundStyle(.orange).font(.footnote) }
                 if shown.isEmpty && !loading && error == nil {
                     Label("Проблем нет", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
+                        .symbolEffect(.bounce, value: shown.isEmpty)
                 }
-                ForEach(shown) { p in
-                    NavigationLink(value: p) { ProblemRow(p: p) }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            if !p.acked {
-                                Button { quickAck = p } label: { Label("Принять", systemImage: "checkmark.circle.fill") }.tint(.green)
-                                Button { ackTarget = p } label: { Label("Коммент.", systemImage: "text.bubble.fill") }.tint(.blue)
-                            }
-                        }
+                ForEach(shown) { p in row(p) }
+            }
+            .safeAreaInset(edge: .bottom) { if selecting { bulkBar } }
+            .overlay { if confetti { ConfettiView(seconds: Launch.screen == "confetti" ? 600 : 3.5) { confetti = false } } }
+            .confirmationDialog("Подтвердить \(selected.count) проблем(ы) в Zabbix?", isPresented: $bulkConfirm, titleVisibility: .visible) {
+                Button("Да, подтвердить все") {
+                    bulkBusy = true
+                    Task {
+                        do {
+                            try await session.acknowledgeMany(Array(selected), message: "")
+                            Haptics.success(); selected = []; selecting = false
+                            await load()
+                        } catch { Haptics.error(); ackError = error.localizedDescription }
+                        bulkBusy = false
+                    }
                 }
+                Button("Отмена", role: .cancel) {}
             }
             .confirmationDialog("Подтвердить проблему?", isPresented: Binding(get: { quickAck != nil }, set: { if !$0 { quickAck = nil } }),
                                 titleVisibility: .visible, presenting: quickAck) { p in
@@ -319,7 +384,17 @@ struct ProblemsView: View {
             }
             .searchable(text: $router.problemSearch, prompt: "Хост или текст проблемы")
             .navigationDestination(isPresented: $showHistory) { ProblemHistoryView() }
+            .navigationDestination(isPresented: $showIncidents) { incidentsDest }
+            .onChange(of: showIncidents) { v in if !v { openIncident = nil } }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(selecting ? "Готово" : "Выбрать") {
+                        withAnimation { selecting.toggle(); if !selecting { selected = [] } }
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { openIncident = nil; showIncidents = true } label: { Image(systemName: "flame") }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
                 }
@@ -330,14 +405,26 @@ struct ProblemsView: View {
         }
     }
 
+    @ViewBuilder private var incidentsDest: some View {
+        if let id = openIncident { IncidentDetailView(id: id) } else { IncidentsView() }
+    }
+
     private func load() async {
         loading = true
         defer { loading = false }
         do {
-            problems = try await session.loadProblems()
+            let before = problems.count
+            let fresh = try await session.loadProblems()
+            let crit = Set(fresh.filter { $0.severity >= 5 }.map(\.id))
+            if let seen = seenCritical, !crit.subtracting(seen).isEmpty { Haptics.critical() }
+            seenCritical = crit
+            if updated != nil && before > 0 && fresh.isEmpty { confetti = true; Haptics.success() }
+            withAnimation(.snappy) { problems = fresh }
             updated = Date()
             error = nil
+            LiveStatus.update(problems: fresh)
             if let i = Launch.problem, path.isEmpty, let p = shown[safe: i] { path = [p] }
+            if Launch.screen == "bulk", selected.isEmpty { selected = Set(shown.prefix(2).map(\.id)) }
         } catch {
             if !(error is CancellationError) { self.error = error.localizedDescription }
         }

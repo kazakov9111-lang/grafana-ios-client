@@ -2,17 +2,19 @@ name: Grafana
 options:
   bundleIdPrefix: com.personal
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "17.0"
 targets:
   Grafana:
     type: application
     platform: iOS
-    sources: [Sources]
+    sources: [Sources, Shared]
+    dependencies:
+      - target: GrafanaWidgets
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.grafana
-        MARKETING_VERSION: "2.6"
-        CURRENT_PROJECT_VERSION: "17"
+        MARKETING_VERSION: "2.7"
+        CURRENT_PROJECT_VERSION: "18"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Info-extra.plist
         SWIFT_VERSION: "5.0"
@@ -23,3 +25,19 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_BackgroundColor: LaunchBG
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Face ID нужен, чтобы защитить доступ к приложению."
+        INFOPLIST_KEY_NSSupportsLiveActivities: YES
+  GrafanaWidgets:
+    type: app-extension
+    platform: iOS
+    sources: [Widgets, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.personal.grafana.widgets
+        MARKETING_VERSION: "2.7"
+        CURRENT_PROJECT_VERSION: "18"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Widgets/Info.plist
+        INFOPLIST_KEY_CFBundleDisplayName: Grafana
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES

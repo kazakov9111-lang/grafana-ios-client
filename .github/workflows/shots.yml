@@ -91,6 +91,14 @@ jobs:
           shot 56-heat --tab 4 --panelset hourheat,stack
           shot 57-report-light --tab 4 --screen report-light
           shot 58-settings-health --tab 3 --screen health
+          shot 59-incidents --tab 1 --screen incidents
+          shot 60-bulk --tab 1 --screen bulk
+          shot 61-scripts --tab 2 --explorer 20 --screen scripts
+          shot 62-ask --tab 0 --screen ask
+          shot 63-cpu3d --tab 4 --panelset cpu3d,stats
+          shot 64-confetti --tab 1 --screen confetti
+          shot 65-qr --tab 3 --screen qr
+          shot 66-overview --tab 0
       - uses: actions/upload-artifact@v4
         with:
           name: shots

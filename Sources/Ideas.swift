@@ -37,7 +37,7 @@ struct HostNoteSection: View {
 
 @MainActor
 func sharePanel<V: View>(_ view: V) {
-    let content = view.frame(width: 390).padding(12).background(Color(white: 0.07)).environment(\.colorScheme, .dark).environmentObject(ChartSync())
+    let content = view.frame(width: 390).padding(12).background(Color(white: 0.07)).environment(\.colorScheme, .dark).environment(\.snapshot, true).environmentObject(ChartSync())
     let r = ImageRenderer(content: content)
     r.scale = 3
     guard let img = r.uiImage else { return }

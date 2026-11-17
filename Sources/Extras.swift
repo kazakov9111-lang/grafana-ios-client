@@ -265,6 +265,7 @@ struct HostExplorerView: View {
                 }
             }
             HostNoteSection(hostId: host.id)
+            HostActionsSection(host: host)
             if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
             Section("Показатели (\(shown.count))") {
                 ForEach(shown.prefix(400)) { it in
@@ -577,6 +578,8 @@ struct BranchMapRepresentable: UIViewRepresentable {
             v.displayPriority = a.level == .ok || a.level == .none ? .defaultLow : .required
             v.titleVisibility = .adaptive
             v.subtitleVisibility = .adaptive
+            v.layer.sublayers?.filter { $0.name == "pulse" }.forEach { $0.removeFromSuperlayer() }
+            if a.level == .bad { addPulse(to: v, color: UIColor(a.color)) }
             v.canShowCallout = a.hostId != nil
             if a.hostId != nil { v.rightCalloutAccessoryView = UIButton(type: .detailDisclosure) }
             return v

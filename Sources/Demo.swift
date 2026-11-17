@@ -163,6 +163,23 @@ enum Demo {
                 }
             }
             return res(out)
+        case "script.get":
+            return res([("1", "Ping"), ("2", "Traceroute"), ("3", "Проверка порта 443")].map {
+                .object(["scriptid": .string($0.0), "name": .string($0.1), "scope": .string("2"), "confirmation": .string("")])
+            })
+        case "script.execute":
+            return .object(["result": .object(["response": .string("success"), "value": .string("""
+            PING 10.10.1.20 (10.10.1.20) 56(84) bytes of data.
+            64 bytes from 10.10.1.20: icmp_seq=1 ttl=63 time=0.84 ms
+            64 bytes from 10.10.1.20: icmp_seq=2 ttl=63 time=0.71 ms
+            64 bytes from 10.10.1.20: icmp_seq=3 ttl=63 time=0.77 ms
+
+            --- 10.10.1.20 ping statistics ---
+            3 packets transmitted, 3 received, 0% packet loss, time 2003ms
+            rtt min/avg/max/mdev = 0.712/0.773/0.841/0.052 ms
+            """)])])
+        case "maintenance.create":
+            return .object(["result": .object(["maintenanceids": .array([.string("77")])])])
         case "problem.get":
             return res(problems.enumerated().map { i, p in
                 .object(["eventid": .string("\(9000 + i)"), "name": .string(p.name), "severity": .string("\(p.sev)"),

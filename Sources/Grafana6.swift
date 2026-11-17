@@ -56,7 +56,7 @@ struct HealthView: View {
                     Text(state.text).font(.headline)
                 }
                 LabeledContent("Последний успешный ответ") {
-                    Text(h.lastOK.map { $0.formatted(date: .omitted, time: .standard) } ?? "—").monospacedDigit()
+                    Text(h.lastOK.map { $0.formatted(.dateTime.hour().minute().second().locale(Locale(identifier: "ru_RU"))) } ?? "—").monospacedDigit()
                 }
                 LabeledContent("Задержка последнего ответа") {
                     Text(h.lastMs.map { "\($0) мс" } ?? "—").monospacedDigit()
@@ -71,7 +71,7 @@ struct HealthView: View {
                     ForEach(h.fails.prefix(20)) { f in
                         VStack(alignment: .leading, spacing: 2) {
                             Text(f.text).font(.subheadline)
-                            Text(f.date.formatted(date: .abbreviated, time: .standard)).font(.caption).foregroundStyle(.secondary)
+                            Text(ruDate(f.date)).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }

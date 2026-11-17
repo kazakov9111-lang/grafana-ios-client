@@ -177,6 +177,8 @@ func shortName(_ n: String) -> String {
 
 struct PanelCard<Content: View>: View {
     @Environment(\.reportLight) private var reportLight
+    @Environment(\.snapshot) private var snapshot
+    @Namespace private var zoomNS
     let title: String
     var subtitle: String?
     var shareable = true
@@ -206,9 +208,12 @@ struct PanelCard<Content: View>: View {
             content()
         }
         .padding(12)
-        .background(Color(white: reportLight ? 1 : 0.11), in: RoundedRectangle(cornerRadius: 10))
+        .modifier(CardBackground())
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06)))
-        .fullScreenCover(isPresented: $full) { PanelFullScreen(title: title, subtitle: subtitle, content: content) }
+        .modifier(ZoomSource(id: title, ns: snapshot ? nil : zoomNS))
+        .fullScreenCover(isPresented: $full) {
+            PanelFullScreen(title: title, subtitle: subtitle, content: content).modifier(ZoomDest(id: title, ns: zoomNS))
+        }
         .onAppear { if Launch.screen == "fullscreen" && title == "Загрузка CPU" { full = true } }
     }
 }
@@ -247,13 +252,15 @@ struct StatPanel: View {
                 Text(title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 Text(value).font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(color)
                     .minimumScaleFactor(0.6).lineLimit(1)
+                    .contentTransition(.numericText())
+                    .animation(.snappy, value: value)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
         }
         .frame(height: 112)
-        .background(Color(white: reportLight ? 1 : 0.11), in: RoundedRectangle(cornerRadius: 10))
+        .modifier(CardBackground())
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(color.opacity(0.25)))
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -326,6 +333,7 @@ struct PanelsView: View {
     @AppStorage("chartStyle") private var chartStyle = "line"
     @AppStorage("chartZero") private var chartZero = false
     @AppStorage("chartWeekAgo") private var weekAgo = false
+    @AppStorage("chartScroll") private var chartScroll = false
     private let timer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
     private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -370,7 +378,7 @@ struct PanelsView: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Image(systemName: "arrow.triangle.2.circlepath").modifier(LoadingSpin(active: model.loading))
                         if refreshSec > 0 { Text(refreshSec >= 60 ? "\(refreshSec / 60)м" : "\(refreshSec)с").font(.caption.monospacedDigit()) }
                     }
                     .foregroundStyle(refreshSec > 0 ? Color.green : Color.secondary)
@@ -382,6 +390,7 @@ struct PanelsView: View {
                     }
                     Toggle("Ось Y от нуля", isOn: $chartZero)
                     Toggle("Сравнить с неделей назад", isOn: $weekAgo)
+                    Toggle("Листать график пальцем", isOn: $chartScroll)
                 } label: {
                     Image(systemName: "waveform.path.ecg").foregroundStyle(.secondary)
                         .padding(8).background(Color(white: 0.14), in: Circle())
@@ -409,7 +418,7 @@ struct PanelsView: View {
                         panel("stats")
                         panel("anom")
                         DashRow(id: "servers", title: "Серверы", icon: "server.rack") {
-                            ForEach(["cpu", "week", "band", "status", "xy", "mem"], id: \.self) { panel($0) }
+                            ForEach(["cpu", "week", "band", "status", "xy", "cpu3d", "mem"], id: \.self) { panel($0) }
                         }
                         DashRow(id: "net", title: "Сеть и филиалы", icon: "network") {
                             ForEach(["nodes", "rtt", "box", "hist", "timeline"], id: \.self) { panel($0) }
@@ -493,6 +502,8 @@ struct PanelsView: View {
         case "box": BoxPlotPanel(series: model.rtt)
         case "calendar": CalendarHeatPanel(events: model.history90)
         case "hourheat": HourHeatPanel(events: model.history90)
+        case "cpu3d":
+            if #available(iOS 26, *) { CPU3DPanel(cpu: model.cpu, mem: model.mem) }
         case "noisy": NoisyHostsPanel(events: model.history90)
         case "dfc": DiskForecastPanel(disks: model.diskFC, series: model.diskSeries)
         case "band": BandPanel(series: model.cpu)

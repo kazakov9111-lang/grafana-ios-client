@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftUI
 
 @main
@@ -62,6 +63,8 @@ struct RootView: View {
 
 struct MainTabs: View {
     @EnvironmentObject var router: Router
+    @EnvironmentObject var session: Session
+    @ObservedObject private var link = DeepLink.shared
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -77,6 +80,17 @@ struct MainTabs: View {
                 .tabItem { Label("Настройки", systemImage: "gearshape") }.tag(3)
         }
         .tint(.orange)
+        .sheet(item: $link.host) { h in
+            NavigationStack {
+                HostExplorerView(host: h)
+                    .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { link.host = nil } } }
+            }
+        }
+        .onOpenURL { DeepLink.shared.open(url: $0) }
+        .task { await session.indexSpotlight() }
+        .onContinueUserActivity(CSSearchableItemActionType) { a in
+            if let id = a.userInfo?[CSSearchableItemActivityIdentifier] as? String { DeepLink.shared.openSpotlight(id) }
+        }
     }
 }
 
@@ -132,6 +146,10 @@ struct SettingsView: View {
     @State private var zbxToken = Keychain.load(account: "zbxToken") ?? ""
     @State private var showBranches = Launch.screen == "branches"
     @State private var showHealth = Launch.screen == "health"
+    @State private var showQR = Launch.screen == "qr"
+    @State private var showScan = false
+    @AppStorage("liveActivity") private var liveActivity = false
+    @AppStorage("glassCards") private var glassCards = false
 
     var body: some View {
         NavigationStack {
@@ -159,17 +177,35 @@ struct SettingsView: View {
                     NavigationLink { HostThresholdsView() } label: { Label("Пороги по хостам", systemImage: "server.rack") }
                     NavigationLink { HealthView() } label: { Label("Здоровье приложения", systemImage: "heart.text.square") }
                 }
+                Section {
+                    Button { showScan = true } label: { Label("Сканировать QR на сервере", systemImage: "qrcode.viewfinder") }
+                    Button { showQR = true } label: { Label("Напечатать QR-наклейки", systemImage: "printer") }
+                } header: { Text("В серверной") } footer: {
+                    Text("Наклейка на стойке открывает карточку хоста: метрики, проблемы, плановые работы и скрипты. Подойдёт и обычная камера iPhone.")
+                }
+                Section {
+                    Toggle(isOn: $liveActivity) { Label("Проблемы на экране блокировки", systemImage: "platter.filled.bottom.iphone") }
+                    Toggle(isOn: $glassCards) { Label("Стеклянные карточки", systemImage: "square.on.square.intersection.dashed") }
+                } header: { Text("Оформление") } footer: {
+                    Text("Экран блокировки и Dynamic Island показывают число проблем и самую серьёзную. Обновляется, пока приложение запущено или в фоне (без push-сервера). Стекло — только на iOS 26.")
+                }
                 Section("Безопасность") {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
                 }
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.6").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 2.7").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }
             .navigationDestination(isPresented: $showHealth) { HealthView() }
+            .sheet(isPresented: $showQR) { QRStickerSheet() }
+            .fullScreenCover(isPresented: $showScan) { QRScanSheet() }
+            .onChange(of: liveActivity) { on in
+                if on { Task { if let p = try? await session.loadProblems() { LiveStatus.update(problems: p) } } }
+                else { LiveStatus.stop() }
+            }
             .onChange(of: zbxURL) { UserDefaults.standard.set($0, forKey: "zbxURL") }
             .onChange(of: zbxToken) { Keychain.save($0, account: "zbxToken") }
         }

@@ -647,6 +647,9 @@ struct TimeSeriesChart: View {
     var prev: [Series] = []
     @AppStorage("chartStyle") private var style = "line"
     @AppStorage("chartZero") private var zero = false
+    @AppStorage("chartScroll") private var scroll = false
+    @Environment(\.snapshot) private var snapshot
+    @State private var reveal: CGFloat = 0
     @ObservedObject private var annoStore = Annotations.shared
     @State private var localHidden: Set<String> = []
     @State private var pendingAnno: Date?
@@ -754,6 +757,7 @@ struct TimeSeriesChart: View {
                 }
                 .chartYScale(domain: domain)
                 .chartXScale(domain: sync.zoom ?? fullRange)
+                .modifier(ScrollableChart(enabled: scroll && fs == nil && sync.zoom == nil, range: fullRange))
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.12))
@@ -788,6 +792,14 @@ struct TimeSeriesChart: View {
                             }
                         }
                     }
+                }
+                .mask {
+                    GeometryReader { g in
+                        Rectangle().frame(width: snapshot ? g.size.width : g.size.width * reveal)
+                    }
+                }
+                .onAppear {
+                    if reveal == 0 { withAnimation(.easeOut(duration: 0.9)) { reveal = 1 } }
                 }
                 .alert("Метка на графике", isPresented: Binding(get: { pendingAnno != nil }, set: { if !$0 { pendingAnno = nil } })) {
                     TextField("Что произошло", text: $annoText)

@@ -435,7 +435,7 @@ struct ReportSheet: View {
     }
 
     @MainActor private func makePDF() {
-        let content = ReportPage(model: model, sla: sla.rows, comment: comment, light: light).frame(width: 560).environmentObject(ChartSync())
+        let content = ReportPage(model: model, sla: sla.rows, comment: comment, light: light).frame(width: 560).environment(\.snapshot, true).environmentObject(ChartSync())
         let r = ImageRenderer(content: content)
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("Otchet-\(f.string(from: Date())).pdf")
