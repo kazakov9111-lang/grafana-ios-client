@@ -199,6 +199,9 @@ enum Demo {
                 let host = hosts.first { $0.name == p.host } ?? hosts[0]
                 return .object([
                     "triggerid": .string(id),
+                    "manual_close": .string(i % 2 == 0 ? "1" : "0"),
+                    "url": .string(i == 0 ? "https://wiki.example.com/storage/synology" : ""),
+                    "url_name": .string(i == 0 ? "Регламент: место на СХД" : ""),
                     "description": .string(p.name),
                     "comments": .string("Проверьте состояние службы и доступность хоста. Если проблема повторяется — эскалировать дежурному."),
                     "hosts": .array([.object(["hostid": .string(host.id), "name": .string(p.host)])]),
@@ -210,6 +213,24 @@ enum Demo {
             })
         case "event.get":
             let now = Int(Date().timeIntervalSince1970)
+            if let oid = params["objectids"].array.first?.string {
+                let msgs = ["Перезапустил службу, ушло", "Почистил старые снимки на томе", "", "Провайдер: авария на линии, восстановили за час", ""]
+                return res((0..<7).map { n in
+                    let start = now - (n + 1) * 9 * 86400 - n * 3700
+                    let m = msgs[n % msgs.count]
+                    return .object(["eventid": .string("P\(oid)\(n)"), "clock": .string(String(start)), "r_eventid": .string("Q\(n)"),
+                                    "acknowledges": .array(m.isEmpty ? [] : [.object([
+                                        "clock": .string(String(start + 900)), "message": .string(m),
+                                        "username": .string("admin"), "name": .string(n % 2 == 0 ? "Иван" : "Ольга"),
+                                        "surname": .string(n % 2 == 0 ? "Петров" : "Смирнова")])])])
+                })
+            }
+            if params["eventids"].array.count > 0, params["eventids"].array.first?.string?.hasPrefix("Q") == true {
+                return res(params["eventids"].array.compactMap { $0.string }.map { id in
+                    let n = Int(id.dropFirst()) ?? 0
+                    return .object(["eventid": .string(id), "clock": .string(String(now - (n + 1) * 9 * 86400 - n * 3700 + 2400 + n * 1800))])
+                })
+            }
             if params["eventids"].array.count > 0 {
                 return res(params["eventids"].array.compactMap { $0.string }.map { id in
                     let n = Int(id.dropFirst()) ?? 0
@@ -227,6 +248,29 @@ enum Demo {
                     "objectid": .string("\(100 + n % problems.count)"), "acknowledged": .string(n % 3 == 0 ? "1" : "0")]))
             }
             return res(out)
+        case "history.get":
+            let ids = params["itemids"].array.compactMap { $0.string }
+            let now = Int(Date().timeIntervalSince1970)
+            var out: [JSON] = []
+            for (k, id) in ids.enumerated() {
+                for m in stride(from: 0, to: 360, by: 5) {
+                    let base = 60 + Double(k * 7 % 30)
+                    let jump = m > 300 - k * 20 ? 25.0 : 0
+                    let v = base + 6 * sin(Double(m) / 30 + Double(k)) + jump
+                    out.append(.object(["itemid": .string(id), "clock": .string(String(now - (360 - m) * 60)), "value": .string(String(v))]))
+                }
+            }
+            return res(out)
+        case "maintenance.get":
+            let now = Int(Date().timeIntervalSince1970)
+            return res([
+                .object(["maintenanceid": .string("77"), "name": .string("Мобильное приложение: HYPER2 — замена диска (1)"),
+                         "active_since": .string(String(now - 1800)), "active_till": .string(String(now + 5400)),
+                         "description": .string("замена диска"), "hosts": .array([.object(["name": .string("HYPER2")])])]),
+                .object(["maintenanceid": .string("78"), "name": .string("Обновление Exchange"),
+                         "active_since": .string(String(now + 86400)), "active_till": .string(String(now + 86400 + 4 * 3600)),
+                         "description": .string("CU15"), "hosts": .array([.object(["name": .string("MBX1")]), .object(["name": .string("MBX2")])])])
+            ])
         case "trend.get":
             let ids = params["itemids"].array.compactMap { $0.string }
             let now = Int(Date().timeIntervalSince1970)

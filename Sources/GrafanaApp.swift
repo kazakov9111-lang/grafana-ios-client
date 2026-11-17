@@ -150,6 +150,7 @@ struct SettingsView: View {
     @State private var showScan = false
     @AppStorage("liveActivity") private var liveActivity = false
     @AppStorage("glassCards") private var glassCards = false
+    @AppStorage("notifyNew") private var notifyNew = true
 
     var body: some View {
         NavigationStack {
@@ -184,10 +185,11 @@ struct SettingsView: View {
                     Text("Наклейка на стойке открывает карточку хоста: метрики, проблемы, плановые работы и скрипты. Подойдёт и обычная камера iPhone.")
                 }
                 Section {
+                    Toggle(isOn: $notifyNew) { Label("Уведомлять о новых высоких", systemImage: "bell.badge") }
                     Toggle(isOn: $liveActivity) { Label("Проблемы на экране блокировки", systemImage: "platter.filled.bottom.iphone") }
                     Toggle(isOn: $glassCards) { Label("Стеклянные карточки", systemImage: "square.on.square.intersection.dashed") }
                 } header: { Text("Оформление") } footer: {
-                    Text("Экран блокировки и Dynamic Island показывают число проблем и самую серьёзную. Обновляется, пока приложение запущено или в фоне (без push-сервера). Стекло — только на iOS 26.")
+                    Text("Экран блокировки и Dynamic Island показывают число проблем и самую серьёзную. Обновляется, пока приложение запущено или в фоне (без push-сервера). Стекло — только на iOS 26. Уведомления о новых высоких проблемах приходят при фоновом обновлении (iOS запускает его сама, раз в 15–60 минут); если их нет — включите баннеры в Настройках iOS → Grafana → Уведомления.")
                 }
                 Section("Безопасность") {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
@@ -195,7 +197,7 @@ struct SettingsView: View {
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.7").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 2.8").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }

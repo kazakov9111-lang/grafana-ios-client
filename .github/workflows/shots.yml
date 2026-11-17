@@ -100,6 +100,11 @@ jobs:
           shot 64-confetti --tab 1 --screen confetti
           shot 65-qr --tab 3 --screen qr
           shot 66-overview --tab 0
+          shot 67-problem-actions --tab 1 --problem 0
+          shot 68-grouped --tab 1 --screen grouped
+          shot 69-shift --tab 1 --screen shift
+          shot 70-maint --tab 1 --screen maint
+          shot 71-replay --tab 2 --screen replay --system map
           mkdir -p shots/crash
           cp ~/Library/Logs/DiagnosticReports/Grafana* shots/crash/ 2>/dev/null || true
           ls shots/crash

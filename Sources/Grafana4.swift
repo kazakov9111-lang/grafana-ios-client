@@ -537,5 +537,9 @@ struct GrafanaShortcuts: AppShortcutsProvider {
                     phrases: ["Состояние филиалов в \(.applicationName)", "Филиалы в \(.applicationName)",
                               "Branch status in \(.applicationName)"],
                     shortTitle: "Филиалы", systemImageName: "network")
+        AppShortcut(intent: SummaryIntent(),
+                    phrases: ["Сводка \(.applicationName)", "Сводка мониторинга в \(.applicationName)",
+                              "Monitoring summary in \(.applicationName)"],
+                    shortTitle: "Сводка", systemImageName: "waveform")
     }
 }

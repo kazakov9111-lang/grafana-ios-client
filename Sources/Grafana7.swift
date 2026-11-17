@@ -213,7 +213,7 @@ struct MaintenanceSheet: View {
                             result = "Обслуживание включено до \(Date().addingTimeInterval(Double(hours) * 3600).formatted(date: .omitted, time: .shortened))"
                             Annotations.shared.add(key: "panels", date: Date(), text: "Работы: \(host.name)")
                             Haptics.success()
-                        } catch { self.error = error.localizedDescription; Haptics.error() }
+                        } catch { self.error = explainZabbixWrite(error); Haptics.error() }
                         busy = false
                     }
                 }

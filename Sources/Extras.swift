@@ -556,6 +556,8 @@ struct BranchPoint: Identifiable {
     let city: String
     let coord: CLLocationCoordinate2D
     let row: HostRow?
+    var override: Level? = nil
+    var overrideNote: String? = nil
 }
 
 /// Настоящая карта (MapKit) с цветными метками филиалов.
@@ -578,6 +580,7 @@ struct BranchMapRepresentable: UIViewRepresentable {
             v.displayPriority = a.level == .ok || a.level == .none ? .defaultLow : .required
             v.titleVisibility = .adaptive
             v.subtitleVisibility = .adaptive
+            if let g = a.glyph, a.level != .bad { v.glyphImage = nil; v.glyphText = g } else { v.glyphText = nil }
             v.layer.sublayers?.filter { $0.name == "pulse" }.forEach { $0.removeFromSuperlayer() }
             if a.level == .bad { addPulse(to: v, color: UIColor(a.color)) }
             v.canShowCallout = a.hostId != nil
@@ -611,15 +614,19 @@ struct BranchMapRepresentable: UIViewRepresentable {
 
     func updateUIView(_ m: MKMapView, context: Context) {
         context.coordinator.parent = self
-        let sig = points.map { "\($0.id)\($0.row?.level.rawValue ?? -1)" }.joined()
+        let sig = points.map { "\($0.id)\(($0.override ?? $0.row?.level)?.rawValue ?? -1)\($0.overrideNote ?? "")" }.joined()
         guard sig != context.coordinator.signature else { return }
         context.coordinator.signature = sig
         m.removeAnnotations(m.annotations)
         m.addAnnotations(points.map { p in
-            BranchAnnotation(title: p.city, coordinate: p.coord, level: p.row?.level ?? .none,
-                             subtitle: p.row.map { r in
+            let a = BranchAnnotation(title: p.city, coordinate: p.coord, level: p.override ?? p.row?.level ?? .none,
+                             subtitle: p.overrideNote ?? p.row.map { r in
                                  r.values["ping"] == 0 ? "нет связи" : (r.values["rtt"].map { $0 < 1 ? String(format: "задержка %.0f мс", $0 * 1000) : "" } ?? "")
                              }, hostId: p.row?.id)
+            if p.override == nil, let r = p.row, r.values["ping"] != 0, let rtt = r.values["rtt"], rtt < 1 {
+                a.glyph = String(format: "%.0f", rtt * 1000)
+            }
+            return a
         })
     }
 }
@@ -630,6 +637,7 @@ final class BranchAnnotation: NSObject, MKAnnotation {
     let coordinate: CLLocationCoordinate2D
     let level: Level
     let hostId: String?
+    var glyph: String?
     var color: Color { level == .none ? Color.gray : level.color }
 
     init(title: String, coordinate: CLLocationCoordinate2D, level: Level, subtitle: String?, hostId: String?) {
@@ -638,16 +646,81 @@ final class BranchAnnotation: NSObject, MKAnnotation {
 }
 
 struct BranchMapView: View {
+    @EnvironmentObject var session: Session
     @ObservedObject var model: SystemsModel
     @Binding var path: NavigationPath
     @ObservedObject private var store = BranchStore.shared
+    @State private var replay = Launch.screen == "replay"
+    @State private var hoursAgo: Double = Launch.screen == "replay" ? 9 : 0
+    @State private var pings: [Series] = []
+    @State private var loadingReplay = false
+
+    private var replayTime: Date { Date().addingTimeInterval(-hoursAgo * 3600) }
+
+    /// Состояние филиала в выбранный момент по истории ICMP ping.
+    private func pastLevel(_ host: String) -> Level? {
+        guard let s = pings.first(where: { $0.name == host || $0.host == host }), !s.points.isEmpty else { return nil }
+        let t = replayTime
+        guard let p = s.points.min(by: { abs($0.t.timeIntervalSince(t)) < abs($1.t.timeIntervalSince(t)) }),
+              abs(p.t.timeIntervalSince(t)) < 1800 else { return Level.none }
+        return p.v < 0.5 ? .bad : .ok
+    }
 
     private var points: [BranchPoint] {
         let rows = model.rows["net"] ?? []
         return store.items.filter { $0.hasCoords }.map { b in
-            BranchPoint(id: b.host, city: b.city,
-                        coord: CLLocationCoordinate2D(latitude: b.lat, longitude: b.lon),
-                        row: rows.first { $0.name == b.host })
+            var p = BranchPoint(id: b.host, city: b.city,
+                                coord: CLLocationCoordinate2D(latitude: b.lat, longitude: b.lon),
+                                row: rows.first { $0.name == b.host })
+            if replay, hoursAgo > 0, let l = pastLevel(b.host) {
+                p.override = l
+                p.overrideNote = l == .bad ? "в \(replayTime.formatted(date: .omitted, time: .shortened)) — нет связи" : "в \(replayTime.formatted(date: .omitted, time: .shortened)) — на связи"
+            }
+            return p
+        }
+    }
+
+    private var downHours: [Int] {
+        // часы суток, когда хоть один филиал был без связи — подсказка на шкале
+        var out = Set<Int>()
+        for s in pings { for p in s.points where p.v < 0.5 { out.insert(Int(Date().timeIntervalSince(p.t) / 3600)) } }
+        return out.sorted()
+    }
+
+    private var replaySection: some View {
+        Section {
+            Toggle(isOn: $replay) { Label("Сутки на карте", systemImage: "clock.arrow.2.circlepath") }
+            if replay {
+                if loadingReplay { ProgressView() }
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(hoursAgo == 0 ? "сейчас" : "\(replayTime.formatted(.dateTime.weekday(.abbreviated).hour().minute().locale(Locale(identifier: "ru_RU"))))")
+                            .font(.subheadline.weight(.semibold).monospacedDigit()).foregroundStyle(.orange)
+                        Spacer()
+                        let down = points.filter { $0.override == .bad }.count
+                        if hoursAgo > 0 { Text(down == 0 ? "все на связи" : "без связи: \(down)").font(.caption).foregroundStyle(down == 0 ? Color.secondary : Level.bad.color) }
+                    }
+                    Slider(value: $hoursAgo, in: 0...24, step: 0.25)
+                        .environment(\.layoutDirection, .rightToLeft)
+                    GeometryReader { g in
+                        ForEach(downHours, id: \.self) { h in
+                            Rectangle().fill(Level.bad.color.opacity(0.8))
+                                .frame(width: max(2, g.size.width / 24 - 1), height: 4)
+                                .offset(x: g.size.width - CGFloat(h + 1) * g.size.width / 24)
+                        }
+                    }
+                    .frame(height: 4)
+                    HStack { Text("24 ч назад"); Spacer(); Text("сейчас") }.font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+        } footer: {
+            Text(replay ? "Двигайте ползунок: метки показывают, кто был на связи в тот момент. Красные отрезки — когда были обрывы." : "Цифра в метке — задержка до филиала в мс.")
+        }
+        .task(id: replay) {
+            guard replay, pings.isEmpty else { return }
+            loadingReplay = true
+            pings = (try? await session.hostSeries(host: "/.*/", filter: "ICMP ping", seconds: 86400, group: "Mikrotik", maxPoints: 300)) ?? []
+            loadingReplay = false
         }
     }
 
@@ -670,6 +743,7 @@ struct BranchMapView: View {
             } footer: {
                 Text("Нажмите на метку, затем на «i», чтобы открыть филиал.")
             }
+            replaySection
             Section("Филиалы") {
                 ForEach(points.sorted { ($0.row?.level.rawValue ?? 0, $1.city) > ($1.row?.level.rawValue ?? 0, $0.city) }) { p in
                     let color = p.row?.level.color ?? Level.none.color

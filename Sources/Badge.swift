@@ -11,7 +11,7 @@ enum Badge {
     static func count(_ ps: [Problem]) -> Int { ps.filter { $0.severity >= 3 && !$0.acked }.count }
 
     static func requestAccess() async {
-        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.badge])
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.badge, .alert, .sound])
     }
 
     static func set(_ n: Int) {
@@ -24,7 +24,7 @@ enum Badge {
             let work = Task {
                 let s = await MainActor.run { session ?? Session() }
                 if await MainActor.run(body: { !s.loggedIn }) { await s.restore() }
-                if let ps = try? await s.loadProblems() { set(count(ps)) }
+                if let ps = try? await s.loadProblems() { set(count(ps)); Notifier.notifyNew(ps) }
                 task.setTaskCompleted(success: true)
             }
             task.expirationHandler = { work.cancel() }

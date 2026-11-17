@@ -3,7 +3,7 @@ import SwiftUI
 // Бэкенд Zabbix-плагина Grafana не умеет «не-метрические» запросы (проблемы, текст),
 // поэтому их делаем через прокси Zabbix API, как это делает веб-интерфейс.
 
-struct Problem: Identifiable, Hashable {
+struct Problem: Identifiable, Hashable, Codable {
     let id: String
     let triggerId: String
     let name: String
@@ -254,6 +254,10 @@ struct ProblemsView: View {
     @State private var openIncident: UUID?
     @State private var confetti = Launch.screen == "confetti"
     @State private var seenCritical: Set<String>?
+    @AppStorage("groupProblems") private var grouped = Launch.screen == "grouped"
+    @State private var showShift = Launch.screen == "shift"
+    @State private var showMaint = Launch.screen == "maint"
+    @State private var cachedAt: Date?
     private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     @ViewBuilder private func row(_ p: Problem) -> some View {
@@ -341,7 +345,27 @@ struct ProblemsView: View {
                     Label("Проблем нет", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
                         .symbolEffect(.bounce, value: shown.isEmpty)
                 }
-                ForEach(shown) { p in row(p) }
+                if let c = cachedAt {
+                    Label("Нет связи — показаны данные от \(c.formatted(.dateTime.day().month().hour().minute().locale(Locale(identifier: "ru_RU"))))",
+                          systemImage: "wifi.slash")
+                        .font(.footnote).foregroundStyle(.orange)
+                }
+                if grouped {
+                    ForEach(problemClusters(shown), id: \.first!.id) { g in
+                        if g.count > 1 {
+                            Section {
+                                ForEach(g) { p in row(p) }
+                            } header: {
+                                Label("Одновременно · \(g.first!.clock.formatted(date: .omitted, time: .shortened)) · \(g.count)",
+                                      systemImage: "link")
+                            }
+                        } else {
+                            ForEach(g) { p in row(p) }
+                        }
+                    }
+                } else {
+                    ForEach(shown) { p in row(p) }
+                }
             }
             .safeAreaInset(edge: .bottom) { if selecting { bulkBar } }
             .overlay { if confetti { ConfettiView(seconds: Launch.screen == "confetti" ? 600 : 3.5) { confetti = false } } }
@@ -386,6 +410,8 @@ struct ProblemsView: View {
             .navigationDestination(isPresented: $showHistory) { ProblemHistoryView() }
             .navigationDestination(isPresented: $showIncidents) { incidentsDest }
             .onChange(of: showIncidents) { v in if !v { openIncident = nil } }
+            .sheet(isPresented: $showShift) { ShiftReportView() }
+            .sheet(isPresented: $showMaint) { MaintenanceListView() }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(selecting ? "Готово" : "Выбрать") {
@@ -393,7 +419,12 @@ struct ProblemsView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { openIncident = nil; showIncidents = true } label: { Image(systemName: "flame") }
+                    Menu {
+                        Button { openIncident = nil; showIncidents = true } label: { Label("Аварии", systemImage: "flame") }
+                        Button { showShift = true } label: { Label("Передача смены", systemImage: "person.2.badge.gearshape") }
+                        Button { showMaint = true } label: { Label("Плановые работы", systemImage: "wrench.and.screwdriver") }
+                        Toggle(isOn: $grouped) { Label("Группировать одновременные", systemImage: "link") }
+                    } label: { Image(systemName: "ellipsis.circle") }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showHistory = true } label: { Image(systemName: "clock.arrow.circlepath") }
@@ -423,16 +454,24 @@ struct ProblemsView: View {
             updated = Date()
             error = nil
             LiveStatus.update(problems: fresh)
+            cachedAt = nil
+            ProblemCache.save(fresh)
+            Notifier.remember(fresh)
+            Task { await ProblemSparkStore.shared.refresh(session, fresh) }
             if let i = Launch.problem, path.isEmpty, let p = shown[safe: i] { path = [p] }
             if Launch.screen == "bulk", selected.isEmpty { selected = Set(shown.prefix(2).map(\.id)) }
         } catch {
-            if !(error is CancellationError) { self.error = error.localizedDescription }
+            if !(error is CancellationError) {
+                self.error = error.localizedDescription
+                if problems.isEmpty, let c = ProblemCache.load() { problems = c.problems; cachedAt = c.at }
+            }
         }
     }
 }
 
 struct ProblemRow: View {
     let p: Problem
+    @ObservedObject private var sparks = ProblemSparkStore.shared
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -447,6 +486,10 @@ struct ProblemRow: View {
                     if ClaimStore.shared.claims[p.id] != nil { Image(systemName: "person.fill.checkmark").foregroundStyle(.orange) }
                 }
                 .font(.caption).foregroundStyle(.secondary)
+            }
+            if let v = sparks.data[p.triggerId], v.count > 2 {
+                Spacer(minLength: 4)
+                ProblemSpark(values: v, color: sevColor(p.severity)).padding(.top, 4)
             }
         }
         .padding(.vertical, 2)
@@ -500,10 +543,13 @@ struct ProblemDetailView: View {
                 }
             }
             ClaimSection(problem: problem)
+            ProblemActionsSection(problem: problem)
             if !problem.host.isEmpty { ProblemContextSection(problem: problem) }
             if let c = detail?.comments, !c.isEmpty {
                 Section("Что делать") { Text(c).font(.subheadline) }
             }
+            TriggerHelpSection(problem: problem)
+            PastOccurrencesSection(problem: problem)
             if let items = detail?.items, !items.isEmpty {
                 Section("Показатели триггера") {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, it in
