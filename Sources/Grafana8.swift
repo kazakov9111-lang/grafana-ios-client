@@ -66,7 +66,7 @@ struct StateBackground: View {
             mesh.opacity(0.55)
         }
         .ignoresSafeArea()
-        .onAppear { withAnimation(.easeInOut(duration: 6).repeatForever(autoreverses: true)) { phase = true } }
+        .onAppear { withAnimation(.easeInOut(duration: 2.5)) { phase = true } }
         .animation(.easeInOut(duration: 1.2), value: severity)
     }
 

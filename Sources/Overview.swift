@@ -142,7 +142,7 @@ struct OverviewView: View {
                     if model.loading { ProgressView() }
                 }
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { ask = true } label: { Image(systemName: "sparkles").symbolEffect(.pulse, options: .repeating) }
+                    Button { ask = true } label: { Image(systemName: "sparkles") }
                 }
             }
             .sheet(isPresented: $ask) { AskView() }

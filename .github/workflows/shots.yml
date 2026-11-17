@@ -27,6 +27,7 @@ jobs:
           xcrun simctl boot $UDID
           xcrun simctl bootstatus $UDID -b
           xcrun simctl install $UDID build/Build/Products/Debug-iphonesimulator/Grafana.app
+          brew tap wix/brew >/dev/null 2>&1 && brew install applesimutils >/dev/null 2>&1 &&             applesimutils --byId $UDID --bundle com.personal.grafana --setPermissions notifications=YES || echo "applesimutils не сработал"
           mkdir -p shots
           shot() {
             name=$1; shift
@@ -99,6 +100,9 @@ jobs:
           shot 64-confetti --tab 1 --screen confetti
           shot 65-qr --tab 3 --screen qr
           shot 66-overview --tab 0
+          mkdir -p shots/crash
+          cp ~/Library/Logs/DiagnosticReports/Grafana* shots/crash/ 2>/dev/null || true
+          ls shots/crash
       - uses: actions/upload-artifact@v4
         with:
           name: shots
