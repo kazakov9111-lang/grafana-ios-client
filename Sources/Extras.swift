@@ -355,11 +355,22 @@ struct ProblemHistoryView: View {
     @EnvironmentObject var router: Router
     @State private var days = 7
     @State private var minSeverity = 3
+    @State private var query = ""
     @State private var events: [HistEvent] = []
     @State private var loading = true
     @State private var error: String?
 
-    private var shown: [HistEvent] { events.filter { $0.severity >= minSeverity } }
+    private var shown: [HistEvent] {
+        events.filter { e in
+            e.severity >= minSeverity &&
+            (query.isEmpty || e.name.localizedCaseInsensitiveContains(query) || e.host.localizedCaseInsensitiveContains(query))
+        }
+    }
+
+    private var topHosts: [(name: String, count: Int)] {
+        Dictionary(grouping: shown.filter { !$0.host.isEmpty }, by: { $0.host }).map { ($0.key, $0.value.count) }
+            .filter { $0.1 >= 3 }.sorted { $0.1 > $1.1 }.prefix(5).map { $0 }
+    }
 
     private var groups: [(day: Date, items: [HistEvent])] {
         let cal = Calendar.current
@@ -376,7 +387,7 @@ struct ProblemHistoryView: View {
         List {
             Section {
                 Picker("Период", selection: $days) {
-                    Text("24 часа").tag(1); Text("7 дней").tag(7); Text("30 дней").tag(30)
+                    Text("24 часа").tag(1); Text("7 дней").tag(7); Text("30 дней").tag(30); Text("90 дней").tag(90)
                 }
                 .pickerStyle(.segmented)
                 Picker("Важность", selection: $minSeverity) {
@@ -401,6 +412,19 @@ struct ProblemHistoryView: View {
                     }
                 }
             }
+            if !topHosts.isEmpty {
+                Section("Чаще всего проблемы у хостов") {
+                    ForEach(topHosts, id: \.name) { h in
+                        HStack {
+                            Text(h.name).font(.footnote).lineLimit(1)
+                            Spacer()
+                            Text("\(h.count)×").font(.footnote.weight(.bold)).foregroundStyle(.orange)
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { query = h.name }
+                    }
+                }
+            }
             ForEach(groups, id: \.day) { g in
                 Section(dayTitle(g.day)) {
                     ForEach(g.items) { e in row(e) }
@@ -410,6 +434,7 @@ struct ProblemHistoryView: View {
         .overlay { if loading && events.isEmpty { ProgressView() } }
         .navigationTitle("История проблем")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "Поиск по названию или хосту")
         .task(id: days) {
             loading = true
             do { events = try await session.problemHistory(days: days); error = nil }

@@ -328,7 +328,7 @@ struct AnomalyPanel: View {
                 ForEach(items.prefix(6)) { a in
                     HStack(spacing: 10) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(shortName(a.host)).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text(branchName(a.host)).font(.subheadline.weight(.semibold)).lineLimit(1)
                             Text("\(a.metric): \(formatValue(a.current, unit: a.unit)), обычно \(formatValue(a.normal, unit: a.unit))")
                                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                         }
@@ -450,7 +450,7 @@ struct SLASummary: View {
             VStack(spacing: 6) {
                 ForEach(rows.sorted { up($0) < up($1) }.prefix(limit)) { r in
                     HStack {
-                        Text(shortName(r.name)).font(.caption).frame(width: 74, alignment: .leading).lineLimit(1)
+                        Text(branchName(r.name)).font(.caption).frame(width: 96, alignment: .leading).lineLimit(1).minimumScaleFactor(0.8)
                         BarGauge(fraction: up(r) / 100, color: up(r) >= target ? Level.ok.color : (up(r) >= target - 2 ? Level.warn.color : Level.bad.color), height: 6)
                         Text(String(format: "%.2f%%", up(r))).font(.caption.monospacedDigit()).frame(width: 58, alignment: .trailing)
                         Text(outs(r) == 0 ? "—" : "\(outs(r))× · \(shortDuration(down(r)))").font(.caption2)

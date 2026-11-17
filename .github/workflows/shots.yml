@@ -85,6 +85,9 @@ jobs:
           shot 49-range --tab 4 --screen range
           shot 51-cpu-anno --tab 4 --panelset cpu,rtt
           shot 52-mine-edit --tab 4 --screen mine-edit
+          shot 53-history --tab 1 --history
+          shot 54-claim --tab 1 --problem 2
+          shot 55-sla --tab 2 --screen sla
       - uses: actions/upload-artifact@v4
         with:
           name: shots

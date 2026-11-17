@@ -25,6 +25,8 @@ final class PanelsModel: ObservableObject {
     @Published var customRange: ClosedRange<Date>?
     @Published var anomalies: [Anomaly] = []
     @Published var cells: [DiskCell] = []
+    @Published var cpuPrev: [Series] = []
+    @Published var rttPrev: [Series] = []
     @Published var groupIndex: Int = 0
     let systems = SystemsModel()
 
@@ -52,7 +54,28 @@ final class PanelsModel: ObservableObject {
     }
 
     /// Только метрики для графиков (без экранов «Систем» и проблем).
+    /// Те же окна неделю назад (пунктир под текущими линиями), если включено в меню «Вид».
+    func loadPrev(session: Session) async {
+        guard UserDefaults.standard.bool(forKey: "chartWeekAgo"), windowSeconds <= 2 * 86400 else {
+            cpuPrev = []; rttPrev = []; return
+        }
+        let week = 7 * 86400.0
+        let end = windowEnd.addingTimeInterval(-week)
+        func shifted(_ s: [Series]) -> [Series] {
+            s.map { x in
+                Series(id: x.id, name: x.name, points: x.points.map { Pt(id: $0.id, t: $0.t.addingTimeInterval(week), v: $0.v) },
+                       text: x.text, unit: x.unit, ref: x.ref, host: x.host, item: x.item)
+            }
+        }
+        let c = (try? await session.hostSeries(host: "/.*/", filter: "CPU utilization", seconds: windowSeconds, group: groupRegex,
+                                               maxPoints: 200, to: end)) ?? []
+        let r = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", seconds: windowSeconds, group: "Mikrotik",
+                                               maxPoints: 200, to: end)) ?? []
+        cpuPrev = shifted(c); rttPrev = shifted(r)
+    }
+
     func loadMetrics(session: Session) async {
+        await loadPrev(session: session)
         let c = (try? await session.hostSeries(host: "/.*/", filter: "CPU utilization", seconds: windowSeconds, group: groupRegex, maxPoints: 200, to: windowEnd)) ?? []
         let m = (try? await session.hostSeries(host: "/.*/", filter: "Memory utilization", seconds: windowSeconds, group: groupRegex, maxPoints: 200, to: windowEnd)) ?? []
         let r = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", seconds: windowSeconds, group: "Mikrotik", maxPoints: 200, to: windowEnd)) ?? []
@@ -300,6 +323,7 @@ struct PanelsView: View {
     @AppStorage("refreshSec") private var refreshSec = 0
     @AppStorage("chartStyle") private var chartStyle = "line"
     @AppStorage("chartZero") private var chartZero = false
+    @AppStorage("chartWeekAgo") private var weekAgo = false
     private let timer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
     private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
@@ -355,6 +379,7 @@ struct PanelsView: View {
                         Text("Линия").tag("line"); Text("Ступеньки").tag("step"); Text("Столбцы").tag("bars")
                     }
                     Toggle("Ось Y от нуля", isOn: $chartZero)
+                    Toggle("Сравнить с неделей назад", isOn: $weekAgo)
                 } label: {
                     Image(systemName: "waveform.path.ecg").foregroundStyle(.secondary)
                         .padding(8).background(Color(white: 0.14), in: Circle())
@@ -413,6 +438,7 @@ struct PanelsView: View {
                     Task { await model.loadMetrics(session: session) }
                 }
             }
+            .onChange(of: weekAgo) { _ in Task { await model.loadMetrics(session: session) } }
             .onChange(of: refreshSec) { v in model.live = v > 0 && v <= 30; lastRefresh = Date() }
             .onChange(of: model.range) { _ in
                 if model.customRange != nil { model.customRange = nil } else { Task { await model.loadMetrics(session: session) } }
@@ -552,7 +578,7 @@ struct PanelsView: View {
             PanelCard(title: "Загрузка CPU", subtitle: "\(model.windowLabel) · топ-6") {
                 TimeSeriesChart(series: s, unit: "percent",
                                 thresholds: [(Thr.cpuWarn, Level.warn.color), (Thr.cpuBad, Level.bad.color)], showLegend: false,
-                                markers: problemMarkers(for: s), hidden: hidden, annotationKey: "panels").chartH(170)
+                                markers: problemMarkers(for: s), hidden: hidden, annotationKey: "panels", prev: model.cpuPrev).chartH(170)
                 legend(s, unit: "percent")
                 if !problemMarkers(for: s).isEmpty {
                     Label("пунктир — проблемы на этих серверах", systemImage: "line.diagonal").font(.caption2).foregroundStyle(.secondary)
@@ -567,7 +593,7 @@ struct PanelsView: View {
             PanelCard(title: "Задержка до филиалов", subtitle: "\(model.windowLabel) · топ-6") {
                 TimeSeriesChart(series: s, unit: "s",
                                 thresholds: [(Thr.rttWarn / 1000, Level.warn.color), (Thr.rttBad / 1000, Level.bad.color)], showLegend: false,
-                                hidden: hidden, annotationKey: "panels").chartH(170)
+                                hidden: hidden, annotationKey: "panels", prev: model.rttPrev).chartH(170)
                 legend(s, unit: "s")
             }
         }

@@ -357,6 +357,7 @@ struct ProblemRow: View {
                     Text("· " + sevName(p.severity))
                     Text("· " + duration(seconds: Date().timeIntervalSince(p.clock)))
                     if p.acked { Image(systemName: "checkmark.circle.fill").foregroundStyle(.green) }
+                    if ClaimStore.shared.claims[p.id] != nil { Image(systemName: "person.fill.checkmark").foregroundStyle(.orange) }
                 }
                 .font(.caption).foregroundStyle(.secondary)
             }
@@ -411,6 +412,7 @@ struct ProblemDetailView: View {
                     Button { showAck = true } label: { Label("Подтвердить проблему…", systemImage: "checkmark.circle") }
                 }
             }
+            ClaimSection(problem: problem)
             if !problem.host.isEmpty { ProblemContextSection(problem: problem) }
             if let c = detail?.comments, !c.isEmpty {
                 Section("Что делать") { Text(c).font(.subheadline) }

@@ -644,6 +644,7 @@ struct TimeSeriesChart: View {
     var markers: [Date] = []
     var hidden: Set<String> = []
     var annotationKey: String?
+    var prev: [Series] = []
     @AppStorage("chartStyle") private var style = "line"
     @AppStorage("chartZero") private var zero = false
     @ObservedObject private var annoStore = Annotations.shared
@@ -688,6 +689,7 @@ struct TimeSeriesChart: View {
                     Button { sync.zoom = nil } label: { Label("Сбросить масштаб", systemImage: "arrow.counterclockwise") }.font(.caption)
                 }
                 readout(shown)
+                if !annos.isEmpty { Color.clear.frame(height: 10) }
                 Chart {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
                         ForEach(isHidden(s) ? [Pt]() : s.points.filter { inZoom($0.t) }) { p in
@@ -707,6 +709,16 @@ struct TimeSeriesChart: View {
                                     .foregroundStyle(color(idx))
                                     .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                                     .interpolationMethod(style == "step" ? .stepEnd : .monotone)
+                            }
+                        }
+                    }
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
+                        if !isHidden(s), let pv = prev.first(where: { $0.name == s.name }) {
+                            ForEach(pv.points.filter { inZoom($0.t) }) { p in
+                                LineMark(x: .value("t", p.t), y: .value("v", p.v), series: .value("p", s.name + " неделю назад"))
+                                    .foregroundStyle(color(idx).opacity(0.4))
+                                    .lineStyle(StrokeStyle(lineWidth: 1.3, dash: [4, 3]))
+                                    .interpolationMethod(.monotone)
                             }
                         }
                     }

@@ -154,6 +154,7 @@ struct SettingsView: View {
                 Section("Панели и графики") {
                     NavigationLink { ThresholdsView() } label: { Label("Свои пороги", systemImage: "slider.horizontal.3") }
                     NavigationLink { AnnotationsListView() } label: { Label("Мои метки на графиках", systemImage: "pin") }
+                    NavigationLink { BackupView() } label: { Label("Резервная копия настроек", systemImage: "externaldrive") }
                 }
                 Section("Безопасность") {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
@@ -161,7 +162,7 @@ struct SettingsView: View {
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.4").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 2.5").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }
