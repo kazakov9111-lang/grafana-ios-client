@@ -22,6 +22,9 @@ final class PanelsModel: ObservableObject {
     @Published var diskFC: [DiskFC] = []
     @Published var diskSeries: [String: Series] = [:]
     var live = false
+    @Published var customRange: ClosedRange<Date>?
+    @Published var anomalies: [Anomaly] = []
+    @Published var cells: [DiskCell] = []
     @Published var groupIndex: Int = 0
     let systems = SystemsModel()
 
@@ -31,11 +34,28 @@ final class PanelsModel: ObservableObject {
     ]
     var groupRegex: String { PanelsModel.groups[groupIndex].regex }
 
+    var windowSeconds: Double { customRange.map { $0.upperBound.timeIntervalSince($0.lowerBound) } ?? range.seconds }
+    var windowEnd: Date { customRange?.upperBound ?? Date() }
+    var windowLabel: String {
+        guard let c = customRange else { return range.label }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ru_RU"); f.dateFormat = "d MMM HH:mm"
+        return "\(f.string(from: c.lowerBound)) — \(f.string(from: c.upperBound))"
+    }
+
+    /// Сдвиг окна на его ширину: -1 назад, +1 вперёд (дошли до «сейчас» — снова живой режим).
+    func shift(_ dir: Int) {
+        let w = windowSeconds
+        let newEnd = windowEnd.addingTimeInterval(Double(dir) * w)
+        if newEnd >= Date().addingTimeInterval(-1) { customRange = nil }
+        else { customRange = newEnd.addingTimeInterval(-w)...newEnd }
+    }
+
     /// Только метрики для графиков (без экранов «Систем» и проблем).
     func loadMetrics(session: Session) async {
-        let c = (try? await session.hostSeries(host: "/.*/", filter: "CPU utilization", range: range, group: groupRegex)) ?? []
-        let m = (try? await session.hostSeries(host: "/.*/", filter: "Memory utilization", range: range, group: groupRegex)) ?? []
-        let r = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", range: range, group: "Mikrotik")) ?? []
+        let c = (try? await session.hostSeries(host: "/.*/", filter: "CPU utilization", seconds: windowSeconds, group: groupRegex, maxPoints: 200, to: windowEnd)) ?? []
+        let m = (try? await session.hostSeries(host: "/.*/", filter: "Memory utilization", seconds: windowSeconds, group: groupRegex, maxPoints: 200, to: windowEnd)) ?? []
+        let r = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", seconds: windowSeconds, group: "Mikrotik", maxPoints: 200, to: windowEnd)) ?? []
         let p = (try? await session.hostSeries(host: "/.*/", filter: "ICMP ping", range: .h24, group: "Mikrotik")) ?? []
         withAnimation(live ? .easeInOut(duration: 0.7) : nil) { cpu = c; mem = m; rtt = r; ping = p }
     }
@@ -44,10 +64,24 @@ final class PanelsModel: ObservableObject {
     func loadWeek(session: Session) async {
         cpuWeek = (try? await session.hostSeries(host: "/.*/", filter: "CPU utilization", seconds: 8 * 86400,
                                                  group: groupRegex, maxPoints: 400)) ?? []
+        await loadAnomalies(session: session)
+    }
+
+    /// Текущее значение против того же времени суток за прошлые 7 дней.
+    func loadAnomalies(session: Session) async {
+        let mem = (try? await session.hostSeries(host: "/.*/", filter: "Memory utilization", seconds: 8 * 86400,
+                                                 group: groupRegex, maxPoints: 400)) ?? []
+        let rtt = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", seconds: 8 * 86400,
+                                                 group: "Mikrotik", maxPoints: 400)) ?? []
+        let all = AnomalyScan.scan(cpuWeek, metric: "CPU", unit: "percent", minDelta: 15)
+            + AnomalyScan.scan(mem, metric: "RAM", unit: "percent", minDelta: 10)
+            + AnomalyScan.scan(rtt, metric: "Задержка", unit: "s", minDelta: 0.05)
+        anomalies = all.sorted { $0.z > $1.z }
     }
 
     /// Диски с самым близким заполнением и их история для графика прогноза.
     func loadDisks(session: Session) async {
+        cells = (try? await session.diskCells()) ?? []
         let fc = (try? await session.diskForecasts()) ?? []
         var pick = Array(fc.filter { $0.daysLeft != nil }.sorted { ($0.daysLeft ?? 9e9) < ($1.daysLeft ?? 9e9) }.prefix(3))
         let chosen = pick
@@ -68,9 +102,9 @@ final class PanelsModel: ObservableObject {
     func load(session: Session) async {
         loading = true
         defer { loading = false }
-        cpu = (try? await session.hostSeries(host: "/.*/", filter: "CPU utilization", range: range, group: groupRegex)) ?? []
-        mem = (try? await session.hostSeries(host: "/.*/", filter: "Memory utilization", range: range, group: groupRegex)) ?? []
-        rtt = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", range: range, group: "Mikrotik")) ?? []
+        cpu = (try? await session.hostSeries(host: "/.*/", filter: "CPU utilization", seconds: windowSeconds, group: groupRegex, maxPoints: 200, to: windowEnd)) ?? []
+        mem = (try? await session.hostSeries(host: "/.*/", filter: "Memory utilization", seconds: windowSeconds, group: groupRegex, maxPoints: 200, to: windowEnd)) ?? []
+        rtt = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", seconds: windowSeconds, group: "Mikrotik", maxPoints: 200, to: windowEnd)) ?? []
         ping = (try? await session.hostSeries(host: "/.*/", filter: "ICMP ping", range: .h24, group: "Mikrotik")) ?? []
         problems = (try? await session.loadProblems()) ?? []
         history90 = (try? await session.problemHistory(days: 90)) ?? history90
@@ -253,41 +287,100 @@ struct HoneycombPanel: View {
 struct PanelsView: View {
     @EnvironmentObject var session: Session
     @StateObject private var model = PanelsModel()
+    @ObservedObject private var customStore = CustomPanelStore.shared
     @State private var duty = Launch.screen == "duty"
-    @State private var live = false
+    @State private var carousel = Launch.screen == "carousel"
+    @State private var report = Launch.screen == "report"
+    @State private var editMine = Launch.screen == "mine-edit"
+    @State private var thrSheet = Launch.screen == "thr"
+    @State private var rangeSheet = Launch.screen == "range"
+    @State private var hidden: Set<String> = []
     @State private var path = NavigationPath()
+    @State private var lastRefresh = Date()
+    @AppStorage("refreshSec") private var refreshSec = 0
+    @AppStorage("chartStyle") private var chartStyle = "line"
+    @AppStorage("chartZero") private var chartZero = false
     private let timer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
-    private let timer15 = Timer.publish(every: 15, on: .main, in: .common).autoconnect()
+    private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+
+    private var carouselIds: [String] {
+        ["stats", "cpu", "anom", "rtt", "timeline", "stack", "honey", "treemap", "dfc"] + (customStore.items.isEmpty ? [] : ["mine"])
+    }
+
+    private var timeBar: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Button { model.shift(-1); Haptics.tap() } label: { Image(systemName: "chevron.left").frame(width: 26, height: 30) }
+                Picker("Период", selection: $model.range) {
+                    ForEach(TimeRange.allCases) { Text($0.shortLabel).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Button { model.shift(1); Haptics.tap() } label: { Image(systemName: "chevron.right").frame(width: 26, height: 30) }
+                    .disabled(model.customRange == nil)
+            }
+            HStack(spacing: 8) {
+                Menu {
+                    Picker("Группа", selection: $model.groupIndex) {
+                        ForEach(PanelsModel.groups.indices, id: \.self) { Text(PanelsModel.groups[$0].title).tag($0) }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(PanelsModel.groups[model.groupIndex].title).foregroundStyle(.orange).lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Color(white: 0.14), in: Capsule())
+                }
+                Spacer()
+                Button { rangeSheet = true } label: {
+                    Image(systemName: "calendar").foregroundStyle(model.customRange == nil ? Color.secondary : Color.orange)
+                        .padding(8).background(Color(white: 0.14), in: Circle())
+                }
+                Menu {
+                    Picker("Обновление", selection: $refreshSec) {
+                        Text("Не обновлять").tag(0); Text("Каждые 5 с").tag(5); Text("Каждые 30 с").tag(30)
+                        Text("Каждую минуту").tag(60); Text("Каждые 5 минут").tag(300)
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        if refreshSec > 0 { Text(refreshSec >= 60 ? "\(refreshSec / 60)м" : "\(refreshSec)с").font(.caption.monospacedDigit()) }
+                    }
+                    .foregroundStyle(refreshSec > 0 ? Color.green : Color.secondary)
+                    .padding(.horizontal, 10).padding(.vertical, 8).background(Color(white: 0.14), in: Capsule())
+                }
+                Menu {
+                    Picker("Вид", selection: $chartStyle) {
+                        Text("Линия").tag("line"); Text("Ступеньки").tag("step"); Text("Столбцы").tag("bars")
+                    }
+                    Toggle("Ось Y от нуля", isOn: $chartZero)
+                } label: {
+                    Image(systemName: "waveform.path.ecg").foregroundStyle(.secondary)
+                        .padding(8).background(Color(white: 0.14), in: Circle())
+                }
+            }
+            if model.customRange != nil {
+                HStack {
+                    Image(systemName: "clock.arrow.circlepath").foregroundStyle(.orange)
+                    Text(model.windowLabel).font(.caption)
+                    Spacer()
+                    Button("К «сейчас»") { model.customRange = nil }.font(.caption)
+                }
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(spacing: 12) {
-                    Picker("Период", selection: $model.range) {
-                        ForEach(TimeRange.allCases) { Text($0.shortLabel).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    HStack {
-                        Menu {
-                            Picker("Группа", selection: $model.groupIndex) {
-                                ForEach(PanelsModel.groups.indices, id: \.self) { Text(PanelsModel.groups[$0].title).tag($0) }
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Text("Группа:").foregroundStyle(.secondary)
-                                Text(PanelsModel.groups[model.groupIndex].title).foregroundStyle(.orange)
-                                Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
-                            }
-                            .font(.subheadline)
-                            .padding(.horizontal, 12).padding(.vertical, 7)
-                            .background(Color(white: 0.14), in: Capsule())
-                        }
-                        Spacer()
-                    }
+                    timeBar
                     if let set = Launch.panelSet {
                         ForEach(set, id: \.self) { panel($0) }
                     } else {
                         panel("stats")
+                        panel("anom")
                         DashRow(id: "servers", title: "Серверы", icon: "server.rack") {
                             ForEach(["cpu", "week", "band", "status", "xy", "mem"], id: \.self) { panel($0) }
                         }
@@ -298,8 +391,9 @@ struct PanelsView: View {
                             ForEach(["stack", "calendar", "noisy", "donut", "honey"], id: \.self) { panel($0) }
                         }
                         DashRow(id: "disks", title: "Диски", icon: "internaldrive") {
-                            ForEach(["dfc", "disk"], id: \.self) { panel($0) }
+                            ForEach(["dfc", "treemap", "disk"], id: \.self) { panel($0) }
                         }
+                        DashRow(id: "mine", title: "Мои панели", icon: "square.grid.2x2") { panel("mine") }
                     }
                 }
                 .padding(12)
@@ -307,26 +401,58 @@ struct PanelsView: View {
             .background(Color(white: 0.07))
             .navigationTitle("Панели")
             .navigationDestination(for: HostMini.self) { HostExplorerView(host: $0) }
+            .navigationDestination(for: String.self) { id in if id == "sla" { SLAView() } }
             .environment(\.drillDown, { drill($0) })
             .refreshable { await model.load(session: session) }
             .task { await model.load(session: session) }
+            .onAppear { model.live = refreshSec > 0 && refreshSec <= 30 }
             .onReceive(timer) { _ in Task { await model.load(session: session) } }
-            .onReceive(timer15) { _ in if live { Task { await model.loadMetrics(session: session) } } }
-            .onChange(of: model.range) { _ in Task { await model.loadMetrics(session: session) } }
+            .onReceive(tick) { _ in
+                if refreshSec > 0 && model.customRange == nil && Date().timeIntervalSince(lastRefresh) >= Double(refreshSec) - 0.5 {
+                    lastRefresh = Date()
+                    Task { await model.loadMetrics(session: session) }
+                }
+            }
+            .onChange(of: refreshSec) { v in model.live = v > 0 && v <= 30; lastRefresh = Date() }
+            .onChange(of: model.range) { _ in
+                if model.customRange != nil { model.customRange = nil } else { Task { await model.loadMetrics(session: session) } }
+            }
+            .onChange(of: model.customRange) { _ in Task { await model.loadMetrics(session: session) } }
             .onChange(of: model.groupIndex) { _ in Task { await model.loadMetrics(session: session); await model.loadWeek(session: session) } }
             .fullScreenCover(isPresented: $duty) { DutyView() }
+            .fullScreenCover(isPresented: $carousel) { CarouselView(ids: carouselIds) { panel($0) } }
+            .sheet(isPresented: $report) { ReportSheet() }
+            .sheet(isPresented: $editMine) { CustomPanelsEditor() }
+            .sheet(isPresented: $rangeSheet) { CustomRangeSheet(model: model) }
+            .sheet(isPresented: $thrSheet) { NavigationStack { ThresholdsView() } }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack {
                         if model.loading { ProgressView() }
-                        Button {
-                            live.toggle(); model.live = live; Haptics.tap()
-                            if live { model.range = .h1 }
-                        } label: { Image(systemName: live ? "bolt.fill" : "bolt").foregroundStyle(live ? Color.green : Color.orange) }
                         Button { duty = true } label: { Image(systemName: "tv") }
+                        Menu {
+                            Button { carousel = true } label: { Label("Карусель панелей", systemImage: "rectangle.on.rectangle") }
+                            Button { path.append("sla") } label: { Label("Доступность филиалов (SLA)", systemImage: "checkmark.seal") }
+                            Button { report = true } label: { Label("Отчёт за неделю (PDF)", systemImage: "doc.richtext") }
+                            Button { editMine = true } label: { Label("Мои панели…", systemImage: "square.grid.2x2") }
+                            Button { thrSheet = true } label: { Label("Свои пороги…", systemImage: "slider.horizontal.3") }
+                        } label: { Image(systemName: "ellipsis.circle") }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var mineView: some View {
+        if customStore.items.isEmpty {
+            Button { editMine = true } label: {
+                Label("Добавить свою панель: любой показатель любого хоста", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity).padding(14)
+                    .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 10))
+            }
+        } else {
+            ForEach(customStore.items) { CustomPanelView(panel: $0, seconds: model.windowSeconds, end: model.windowEnd) }
+            Button { editMine = true } label: { Label("Настроить панели", systemImage: "slider.horizontal.3").font(.caption) }
         }
     }
 
@@ -346,13 +472,20 @@ struct PanelsView: View {
         case "mem": gaugeList("mem", title: "Память серверов", subtitle: "bar gauge")
         case "rtt": rttPanel
         case "hist":
-            HistogramPanel(title: "Распределение задержки до филиалов", subtitle: "гистограмма · \(model.range.label)",
+            HistogramPanel(title: "Распределение задержки до филиалов", subtitle: "гистограмма · \(model.windowLabel)",
                            values: model.rtt.flatMap { $0.points.map { $0.v } }, scale: 1000, suffix: " мс", bins: 12)
         case "timeline": timeline
         case "stack": StackedProblemsPanel(events: model.history)
         case "donut": donut
         case "honey": honeycomb
         case "disk": gaugeList("disk", title: "Заполнение дисков", subtitle: "bar gauge")
+        case "anom":
+            PanelCard(title: "Аномалии сейчас", subtitle: "против прошлых 7 дней") { AnomalyPanel(items: model.anomalies) }
+        case "treemap":
+            if !model.cells.isEmpty {
+                PanelCard(title: "Карта дисков", subtitle: "treemap · нажмите на том") { TreemapPanel(cells: model.cells) }
+            }
+        case "mine": mineView
         default: EmptyView()
         }
     }
@@ -373,8 +506,9 @@ struct PanelsView: View {
 
     private func problemMarkers(for s: [Series]) -> [Date] {
         let hosts = Set(s.map { $0.name })
-        let from = Date().addingTimeInterval(-model.range.seconds)
-        return model.history.filter { $0.severity >= 4 && $0.start >= from && hosts.contains($0.host) }
+        let to = model.windowEnd
+        let from = to.addingTimeInterval(-model.windowSeconds)
+        return model.history.filter { $0.severity >= 4 && $0.start >= from && $0.start <= to && hosts.contains($0.host) }
             .map { $0.start }.prefix(14).map { $0 }
     }
 
@@ -395,17 +529,30 @@ struct PanelsView: View {
                         .foregroundStyle(.secondary)
                 }
                 .font(.caption.monospacedDigit())
+                .opacity(hidden.contains(x.name) ? 0.35 : 1)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if hidden.contains(x.name) { hidden.remove(x.name) } else { hidden.insert(x.name) }
+                    Haptics.tap()
+                }
+                .onLongPressGesture {
+                    let only = Set(s.map { $0.name }).subtracting([x.name])
+                    hidden = (hidden == only) ? [] : only
+                    Haptics.tap()
+                }
             }
+            Text("строка — скрыть/показать · удержание — оставить только её · удержание на графике — метка")
+                .font(.system(size: 9)).foregroundStyle(.secondary)
         }
     }
 
     @ViewBuilder private var cpuPanel: some View {
         let s = top(model.cpu)
         if !s.isEmpty {
-            PanelCard(title: "Загрузка CPU", subtitle: "\(model.range.label) · топ-6") {
+            PanelCard(title: "Загрузка CPU", subtitle: "\(model.windowLabel) · топ-6") {
                 TimeSeriesChart(series: s, unit: "percent",
-                                thresholds: [(80, Level.warn.color), (90, Level.bad.color)], showLegend: false,
-                                markers: problemMarkers(for: s)).chartH(170)
+                                thresholds: [(Thr.cpuWarn, Level.warn.color), (Thr.cpuBad, Level.bad.color)], showLegend: false,
+                                markers: problemMarkers(for: s), hidden: hidden, annotationKey: "panels").chartH(170)
                 legend(s, unit: "percent")
                 if !problemMarkers(for: s).isEmpty {
                     Label("пунктир — проблемы на этих серверах", systemImage: "line.diagonal").font(.caption2).foregroundStyle(.secondary)
@@ -417,9 +564,10 @@ struct PanelsView: View {
     @ViewBuilder private var rttPanel: some View {
         let s = top(model.rtt)
         if !s.isEmpty {
-            PanelCard(title: "Задержка до филиалов", subtitle: "\(model.range.label) · топ-6") {
+            PanelCard(title: "Задержка до филиалов", subtitle: "\(model.windowLabel) · топ-6") {
                 TimeSeriesChart(series: s, unit: "s",
-                                thresholds: [(0.15, Level.warn.color), (0.4, Level.bad.color)], showLegend: false).chartH(170)
+                                thresholds: [(Thr.rttWarn / 1000, Level.warn.color), (Thr.rttBad / 1000, Level.bad.color)], showLegend: false,
+                                hidden: hidden, annotationKey: "panels").chartH(170)
                 legend(s, unit: "s")
             }
         }
@@ -559,7 +707,7 @@ struct PanelsView: View {
                 PanelCard(title: title, subtitle: subtitle) {
                     VStack(spacing: 8) {
                         ForEach(Array(rows), id: \.name) { r in
-                            let c: Color = r.v >= 92 ? Level.bad.color : (r.v >= 85 ? Level.warn.color : Level.ok.color)
+                            let c: Color = Thr.color(r.v, warn: col == "disk" ? Thr.diskWarn : Thr.memWarn, bad: col == "disk" ? Thr.diskBad : Thr.memBad)
                             VStack(spacing: 3) {
                                 HStack {
                                     Text(r.name).font(.caption).lineLimit(1)
@@ -604,13 +752,13 @@ struct PanelStatsGrid: View {
         let up = uptime
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
             StatPanel(title: "CPU серверов, среднее", value: cpu.map { String(format: "%.0f%%", $0) } ?? "—",
-                      color: level(cpu, warn: 70, bad: 85), spark: averaged(model.cpu))
+                      color: level(cpu, warn: Thr.cpuWarn, bad: Thr.cpuBad), spark: averaged(model.cpu))
             StatPanel(title: "RAM серверов, среднее", value: mem.map { String(format: "%.0f%%", $0) } ?? "—",
-                      color: level(mem, warn: 80, bad: 90), spark: averaged(model.mem))
+                      color: level(mem, warn: Thr.memWarn, bad: Thr.memBad), spark: averaged(model.mem))
             StatPanel(title: "Задержка до филиалов", value: rtt.map { String(format: "%.0f мс", $0 * 1000) } ?? "—",
-                      color: level(rtt.map { $0 * 1000 }, warn: 120, bad: 300), spark: averaged(model.rtt))
+                      color: level(rtt.map { $0 * 1000 }, warn: Thr.rttWarn, bad: Thr.rttBad), spark: averaged(model.rtt))
             StatPanel(title: "Доступность филиалов 24ч", value: up.map { String(format: "%.1f%%", $0) } ?? "—",
-                      color: up.map { $0 >= 99.5 ? Level.ok.color : ($0 >= 97 ? Level.warn.color : Level.bad.color) } ?? .gray,
+                      color: up.map { $0 >= Thr.uptime ? Level.ok.color : ($0 >= Thr.uptime - 2.5 ? Level.warn.color : Level.bad.color) } ?? .gray,
                       spark: averaged(model.ping).map { Pt(id: $0.id, t: $0.t, v: $0.v * 100) })
         }
     }
@@ -624,9 +772,9 @@ struct CPUPanelCard: View {
         let s = model.cpu.filter { !$0.points.isEmpty }
             .sorted { ($0.points.last?.v ?? 0) > ($1.points.last?.v ?? 0) }.prefix(5).map { $0 }
         if !s.isEmpty {
-            PanelCard(title: "Загрузка CPU", subtitle: "\(model.range.label) · топ-5") {
+            PanelCard(title: "Загрузка CPU", subtitle: "\(model.windowLabel) · топ-5") {
                 TimeSeriesChart(series: s, unit: "percent",
-                                thresholds: [(80, Level.warn.color), (90, Level.bad.color)], showLegend: false).chartH(150)
+                                thresholds: [(Thr.cpuWarn, Level.warn.color), (Thr.cpuBad, Level.bad.color)], showLegend: false).chartH(150)
                 HStack(spacing: 10) {
                     ForEach(Array(s.enumerated()), id: \.element.id) { i, x in
                         HStack(spacing: 4) {

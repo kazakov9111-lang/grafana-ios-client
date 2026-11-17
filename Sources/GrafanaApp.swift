@@ -151,13 +151,17 @@ struct SettingsView: View {
                         Label("Филиалы на карте", systemImage: "map")
                     }
                 } footer: { Text("Города для карты филиалов: добавьте все свои вручную или одной кнопкой из Zabbix.") }
+                Section("Панели и графики") {
+                    NavigationLink { ThresholdsView() } label: { Label("Свои пороги", systemImage: "slider.horizontal.3") }
+                    NavigationLink { AnnotationsListView() } label: { Label("Мои метки на графиках", systemImage: "pin") }
+                }
                 Section("Безопасность") {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
                 }
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.3").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 2.4").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }

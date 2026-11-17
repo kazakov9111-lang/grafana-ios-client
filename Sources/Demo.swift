@@ -33,7 +33,9 @@ enum Demo {
                             cpu: Double, mem: Double, disk: Double, extra: [(String, Double, String)] = []) -> DHost {
         DHost(id: id, name: name, group: g, items: [
             ("Zabbix agent ping", ping, ""), ("CPU utilization", cpu, "%"), ("Memory utilization", mem, "%"),
-            ("FS [(C:)]: Space: Used, in %", disk, "%"), ("FS [(D:)]: Space: Used, in %", max(5, disk - 22), "%")
+            ("FS [(C:)]: Space: Used, in %", disk, "%"), ("FS [(D:)]: Space: Used, in %", max(5, disk - 22), "%"),
+            ("FS [(C:)]: Space: Total", 4e11 + Double((Int(id) ?? 1) % 5) * 2.5e11, "B"),
+            ("FS [(D:)]: Space: Total", 8e11 + Double((Int(id) ?? 1) % 4) * 6e11, "B")
         ] + extra)
     }
 
@@ -242,7 +244,8 @@ enum Demo {
         var results: [String: JSON] = [:]
         let nowMs = Date().timeIntervalSince1970 * 1000
         let fromMs = Double(body["from"].string ?? "") ?? (nowMs - 360_000 * 60)
-        let spanMs = max(60_000, nowMs - fromMs)
+        let toMs = Double(body["to"].string ?? "") ?? nowMs
+        let spanMs = max(60_000, toMs - fromMs)
         for q in body["queries"].array {
             let ref = q["refId"].string ?? "A"
             let gf = q["group"]["filter"].string ?? "", hf = q["host"]["filter"].string ?? "", itf = q["item"]["filter"].string ?? ""
@@ -252,19 +255,23 @@ enum Demo {
                     let n = min(400, max(60, Int(spanMs / 600_000)))
                     var times: [JSON] = [], vals: [JSON] = []
                     for k in 0..<n {
-                        times.append(.number(nowMs - Double(n - k) * spanMs / Double(n)))
+                        times.append(.number(toMs - Double(n - k) * spanMs / Double(n)))
                         let binary = it.1 == 0 || it.1 == 1
                         let wave = sin(Double(k) / 5 + Double(h.id.count)) * it.1 * 0.2
                         var v = binary && it.2 == "" ? it.1 : max(0, it.1 + wave)
                         if it.0 == "ICMP ping" && h.id == "4" && (k >= 20 && k < 27 || k >= 44 && k < 47) { v = 0 }
                         if it.0 == "ICMP ping" && h.id == "7" && k >= 8 && k < 11 { v = 0 }
+                        if k >= n - 3 && n >= 200 {
+                            if it.0 == "CPU utilization" && h.id == "32" { v = 97 }
+                            if it.0 == "ICMP response time" && h.id == "17" { v = 0.62 }
+                        }
                         if it.2 == "%" { v = min(100, v) }
                         if it.0.contains("Space: Used") {
                             let rise = [0.5, 4, 1.5, 7, 0, 3][(Int(h.id) ?? 1) % 6]
                             v = min(99, max(1, it.1 - rise * Double(n - k) / Double(n) * spanMs / 604_800_000))
                         }
                         if it.0.hasPrefix("Veeam: Backups") {
-                            let day = Int((nowMs - Double(n - k) * spanMs / Double(n)) / 86_400_000)
+                            let day = Int((toMs - Double(n - k) * spanMs / Double(n)) / 86_400_000)
                             let r = (day * 3 + h.id.count * 2 + it.0.count) % 7
                             if it.0.contains("Failed") { v = r == 0 ? 2 : (h.id == "50" && r == 3 ? 1 : 0) }
                             else if it.0.contains("Warning") { v = r == 2 ? 1 : 0 }

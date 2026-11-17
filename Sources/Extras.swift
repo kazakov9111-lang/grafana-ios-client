@@ -705,6 +705,7 @@ struct AckSheet: View {
                     Task {
                         do {
                             try await session.acknowledge(eventId: problem.id, message: message)
+                            Annotations.shared.add(key: "panels", date: Date(), text: "Подтверждено: " + String(problem.name.prefix(40)))
                             onDone(); dismiss()
                         } catch { self.error = error.localizedDescription }
                         busy = false

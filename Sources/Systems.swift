@@ -253,7 +253,7 @@ struct SystemsView: View {
     @State private var path: NavigationPath = {
         var p = NavigationPath()
         if let s = Launch.system { p.append(s) }
-        if let s = Launch.screen, ["compare", "vcal"].contains(s) { p.append(s) }
+        if let s = Launch.screen, ["compare", "vcal", "sla", "sla7"].contains(s) { p.append(s) }
         if let e = Launch.explorer, let h = Demo.hosts.first(where: { $0.id == e }) {
             p.append(HostMini(id: h.id, name: h.name))
         }
@@ -297,6 +297,7 @@ struct SystemsView: View {
                             if sec == "Инфраструктура" {
                                 NavigationLink(value: "map") { simpleCard("map", "Карта филиалов", "Доступность на карте России", color: mapColor) }
                                 NavigationLink(value: "compare") { simpleCard("chart.xyaxis.line", "Сравнение хостов", "Несколько хостов на одном графике", color: Level.ok.color) }
+                                NavigationLink(value: "sla") { simpleCard("checkmark.seal", "Доступность (SLA)", "Филиалы за 7 и 30 дней, цель и простои", color: Level.ok.color) }
                                 NavigationLink(value: "disks") { simpleCard("chart.line.uptrend.xyaxis", "Прогноз дисков", "Когда закончится место", color: Level.ok.color) }
                             }
                         }
@@ -316,6 +317,7 @@ struct SystemsView: View {
                 case "disks": DisksView()
                 case "compare": CompareView()
                 case "vcal": VeeamCalendarView()
+                case "sla", "sla7": SLAView()
                 default:
                     if let s = systemScreens.first(where: { $0.id == id }) {
                         SystemDetailView(screen: s, model: model, path: $path)
@@ -640,6 +642,14 @@ struct TimeSeriesChart: View {
     var thresholds: [(value: Double, color: Color)] = []
     var showLegend = true
     var markers: [Date] = []
+    var hidden: Set<String> = []
+    var annotationKey: String?
+    @AppStorage("chartStyle") private var style = "line"
+    @AppStorage("chartZero") private var zero = false
+    @ObservedObject private var annoStore = Annotations.shared
+    @State private var localHidden: Set<String> = []
+    @State private var pendingAnno: Date?
+    @State private var annoText = ""
     @EnvironmentObject private var sync: ChartSync
     @Environment(\.fsHeight) private var fs
     @State private var dragA: CGFloat?
@@ -652,6 +662,8 @@ struct TimeSeriesChart: View {
         s.points.min { abs($0.t.timeIntervalSince(d)) < abs($1.t.timeIntervalSince(d)) }
     }
 
+    private func isHidden(_ s: Series) -> Bool { hidden.contains(s.name) || localHidden.contains(s.name) }
+
     private func color(_ i: Int) -> Color { seriesPalette[i % seriesPalette.count] }
 
     var body: some View {
@@ -660,13 +672,17 @@ struct TimeSeriesChart: View {
             Text("Нет данных за период").font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 60)
         } else {
-            let vals = shown.flatMap { $0.points.map(\.v) }
-            let lo = unit == "percent" ? 0 : (vals.min() ?? 0)
+            let vis = shown.filter { !isHidden($0) }
+            let vals = (vis.isEmpty ? shown : vis).flatMap { $0.points.map(\.v) }
+            let lo = unit == "percent" ? 0 : (zero ? 0 : (vals.min() ?? 0))
             let hi = unit == "percent" ? 100 : (vals.max() ?? 1)
             let pad = max((hi - lo) * 0.12, 0.5)
             let domain = unit == "percent" ? 0.0...100.0 : max(0, lo - pad)...(hi + pad)
             let allT = shown.flatMap { $0.points.map { $0.t } }
             let fullRange = (allT.min() ?? Date())...(allT.max() ?? Date())
+            let annos: [Annotation] = annotationKey.map { k in
+                annoStore.items.filter { $0.key == k && $0.date >= fullRange.lowerBound && $0.date <= fullRange.upperBound }
+            } ?? []
             VStack(alignment: .leading, spacing: 6) {
                 if fs != nil, sync.zoom != nil {
                     Button { sync.zoom = nil } label: { Label("Сбросить масштаб", systemImage: "arrow.counterclockwise") }.font(.caption)
@@ -674,24 +690,38 @@ struct TimeSeriesChart: View {
                 readout(shown)
                 Chart {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
-                        ForEach(s.points.filter { inZoom($0.t) }) { p in
-                            if shown.count <= 2 {
-                                AreaMark(x: .value("t", p.t), yStart: .value("0", domain.lowerBound), yEnd: .value("v", p.v),
-                                         series: .value("a", s.name))
-                                    .foregroundStyle(LinearGradient(colors: [color(idx).opacity(0.35), color(idx).opacity(0.02)],
-                                                                    startPoint: .top, endPoint: .bottom))
-                                    .interpolationMethod(.monotone)
+                        ForEach(isHidden(s) ? [Pt]() : s.points.filter { inZoom($0.t) }) { p in
+                            if style == "bars" {
+                                BarMark(x: .value("t", p.t), yStart: .value("0", domain.lowerBound), yEnd: .value("v", p.v),
+                                        width: .fixed(3))
+                                    .foregroundStyle(color(idx).opacity(0.8))
+                            } else {
+                                if shown.count <= 2 {
+                                    AreaMark(x: .value("t", p.t), yStart: .value("0", domain.lowerBound), yEnd: .value("v", p.v),
+                                             series: .value("a", s.name))
+                                        .foregroundStyle(LinearGradient(colors: [color(idx).opacity(0.35), color(idx).opacity(0.02)],
+                                                                        startPoint: .top, endPoint: .bottom))
+                                        .interpolationMethod(style == "step" ? .stepEnd : .monotone)
+                                }
+                                LineMark(x: .value("t", p.t), y: .value("v", p.v), series: .value("l", s.name))
+                                    .foregroundStyle(color(idx))
+                                    .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                                    .interpolationMethod(style == "step" ? .stepEnd : .monotone)
                             }
-                            LineMark(x: .value("t", p.t), y: .value("v", p.v), series: .value("l", s.name))
-                                .foregroundStyle(color(idx))
-                                .lineStyle(StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                                .interpolationMethod(.monotone)
                         }
                     }
                     ForEach(markers.filter { $0 >= fullRange.lowerBound && $0 <= fullRange.upperBound }, id: \.self) { d in
                         RuleMark(x: .value("событие", d))
                             .foregroundStyle(Level.bad.color.opacity(0.55))
                             .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [2, 3]))
+                    }
+                    ForEach(annos) { a in
+                        RuleMark(x: .value("метка", a.date))
+                            .foregroundStyle(Color.cyan.opacity(0.75))
+                            .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [1, 3]))
+                            .annotation(position: .top, alignment: .leading, spacing: 2) {
+                                Text(a.text).font(.system(size: 8)).foregroundStyle(Color.cyan).lineLimit(1)
+                            }
                     }
                     ForEach(Array(thresholds.enumerated()), id: \.offset) { _, t in
                         if domain.contains(t.value) {
@@ -704,7 +734,7 @@ struct TimeSeriesChart: View {
                         RuleMark(x: .value("sel", sel)).foregroundStyle(Color.white.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                         ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
-                            if let p = nearest(s, to: sel) {
+                            if !isHidden(s), let p = nearest(s, to: sel) {
                                 PointMark(x: .value("t", p.t), y: .value("v", p.v)).foregroundStyle(color(idx)).symbolSize(60)
                             }
                         }
@@ -736,6 +766,9 @@ struct TimeSeriesChart: View {
                                 })
                                 .modifier(ZoomGestures(enabled: fs != nil, proxy: proxy, geo: geo, full: fullRange,
                                                        sync: sync, a: $dragA, b: $dragB))
+                                .modifier(AnnoGesture(enabled: annotationKey != nil, proxy: proxy, geo: geo) { d in
+                                    pendingAnno = d; annoText = ""
+                                })
                             if let a = dragA, let b = dragB {
                                 Rectangle().fill(Color.orange.opacity(0.2))
                                     .frame(width: abs(b - a), height: geo.size.height)
@@ -744,14 +777,29 @@ struct TimeSeriesChart: View {
                         }
                     }
                 }
+                .alert("Метка на графике", isPresented: Binding(get: { pendingAnno != nil }, set: { if !$0 { pendingAnno = nil } })) {
+                    TextField("Что произошло", text: $annoText)
+                    Button("Сохранить") {
+                        if let d = pendingAnno, let k = annotationKey { Annotations.shared.add(key: k, date: d, text: annoText) }
+                        pendingAnno = nil
+                    }
+                    Button("Отмена", role: .cancel) { pendingAnno = nil }
+                } message: { Text(pendingAnno.map { ruDate($0) } ?? "") }
                 if shown.count == 1, let one = shown.first { SeriesStats(series: one, unit: unit) }
                 if showLegend && shown.count > 1 && shown.count <= 6 {
                     HStack(spacing: 10) {
                         ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
-                            HStack(spacing: 4) {
-                                Circle().fill(color(idx)).frame(width: 7, height: 7)
-                                Text(s.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            Button {
+                                if localHidden.contains(s.name) { localHidden.remove(s.name) } else { localHidden.insert(s.name) }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Circle().fill(color(idx)).frame(width: 7, height: 7)
+                                    Text(s.name).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                        .strikethrough(isHidden(s))
+                                }
+                                .opacity(isHidden(s) ? 0.35 : 1)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -764,7 +812,7 @@ struct TimeSeriesChart: View {
             HStack(spacing: 10) {
                 Text(sel.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
                 ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
-                    if let p = nearest(s, to: sel) {
+                    if !isHidden(s), let p = nearest(s, to: sel) {
                         Text(formatValue(p.v, unit: unit)).font(.caption.weight(.bold)).foregroundStyle(color(idx))
                     }
                 }

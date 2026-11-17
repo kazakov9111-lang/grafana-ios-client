@@ -98,9 +98,9 @@ extension Session {
         try await hostSeries(host: host, filter: filter, seconds: range.seconds, group: group, maxPoints: 200)
     }
 
-    func hostSeries(host: String, filter: String, seconds: Double, group: String = "/.*/", maxPoints: Int = 200) async throws -> [Series] {
+    func hostSeries(host: String, filter: String, seconds: Double, group: String = "/.*/", maxPoints: Int = 200, to: Date = Date()) async throws -> [Series] {
         guard let ds = await zabbixDS() else { return [] }
-        let nowMs = Date().timeIntervalSince1970 * 1000
+        let nowMs = to.timeIntervalSince1970 * 1000
         let target: JSON = .object([
             "refId": .string("A"), "queryType": .string("0"),
             "group": .object(["filter": .string(group)]),
@@ -411,6 +411,7 @@ struct ProblemDetailView: View {
                     Button { showAck = true } label: { Label("Подтвердить проблему…", systemImage: "checkmark.circle") }
                 }
             }
+            if !problem.host.isEmpty { ProblemContextSection(problem: problem) }
             if let c = detail?.comments, !c.isEmpty {
                 Section("Что делать") { Text(c).font(.subheadline) }
             }

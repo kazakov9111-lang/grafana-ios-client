@@ -31,7 +31,7 @@ jobs:
           shot() {
             name=$1; shift
             xcrun simctl launch --terminate-running-process $UDID com.personal.grafana --demo "$@" >/dev/null
-            sleep 9
+            sleep ${WAIT:-9}
             xcrun simctl io $UDID screenshot shots/$name.png
           }
           shot 01-overview --tab 0
@@ -75,6 +75,16 @@ jobs:
           shot 30-vcal --tab 2 --screen vcal
           shot 31-duty --tab 4 --screen duty
           shot 32-problems --tab 1
+          shot 42-context --tab 1 --problem 1
+          shot 43-anom --tab 4 --panelset anom,treemap
+          shot 44-mine --tab 4 --panelset mine
+          shot 45-sla --tab 2 --screen sla
+          shot 46-thr --tab 4 --screen thr
+          shot 47-carousel --tab 4 --screen carousel
+          WAIT=22 shot 48-report --tab 4 --screen report
+          shot 49-range --tab 4 --screen range
+          shot 51-cpu-anno --tab 4 --panelset cpu,rtt
+          shot 52-mine-edit --tab 4 --screen mine-edit
       - uses: actions/upload-artifact@v4
         with:
           name: shots
