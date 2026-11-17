@@ -486,7 +486,7 @@ struct CustomRangeSheet: View {
 // MARK: Siri и «Быстрые команды»
 
 @MainActor
-private func readySession() async -> Session? {
+func readySession() async -> Session? {
     let s = Session()
     var n = 0
     while s.restoring && n < 150 { try? await Task.sleep(nanoseconds: 100_000_000); n += 1 }
