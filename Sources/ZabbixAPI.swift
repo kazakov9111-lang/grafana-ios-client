@@ -255,6 +255,7 @@ struct ProblemsView: View {
     @State private var confetti = Launch.screen == "confetti"
     @State private var seenCritical: Set<String>?
     @AppStorage("groupProblems") private var grouped = Launch.screen == "grouped"
+    @AppStorage("foldDeps") private var foldDeps = true
     @State private var showShift = Launch.screen == "shift"
     @State private var showMaint = Launch.screen == "maint"
     @State private var cachedAt: Date?
@@ -363,6 +364,17 @@ struct ProblemsView: View {
                             ForEach(g) { p in row(p) }
                         }
                     }
+                } else if foldDeps {
+                    let f = DepStore.shared.fold(shown)
+                    ForEach(f.visible) { p in
+                        row(p)
+                        if let kids = f.children[p.host], p.id == f.visible.first(where: { $0.host == p.host })?.id {
+                            DisclosureGroup("+\(kids.count) на зависимых хостах") {
+                                ForEach(kids) { k in row(k) }
+                            }
+                            .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
                 } else {
                     ForEach(shown) { p in row(p) }
                 }
@@ -373,6 +385,7 @@ struct ProblemsView: View {
                 Button("Да, подтвердить все") {
                     bulkBusy = true
                     Task {
+                        guard await FaceGate.ok("Подтвердить \(selected.count) проблем(ы)") else { bulkBusy = false; return }
                         do {
                             try await session.acknowledgeMany(Array(selected), message: "")
                             Haptics.success(); selected = []; selecting = false
@@ -389,6 +402,7 @@ struct ProblemsView: View {
                     Task {
                         do {
                             try await session.acknowledge(eventId: p.id, message: "")
+                            AppMetrics.ackDelay(p.clock)
                             Haptics.success(); await load()
                         } catch { Haptics.error(); ackError = error.localizedDescription }
                     }

@@ -94,11 +94,14 @@ struct Annotation: Codable, Identifiable, Hashable {
     var key: String
     var date: Date
     var text: String
+    var remoteId: Int? = nil
 }
 
 final class Annotations: ObservableObject {
     static let shared = Annotations()
     @Published var items: [Annotation] { didSet { save() } }
+    /// Отправка метки в Grafana (ставится после входа); возвращает id аннотации.
+    var sink: ((Date, String) async -> Int?)?
 
     init() {
         if let d = UserDefaults.standard.data(forKey: "annotations"),
@@ -118,8 +121,14 @@ final class Annotations: ObservableObject {
     func add(key: String, date: Date, text: String) {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        items.append(Annotation(key: key, date: date, text: t))
+        let a = Annotation(key: key, date: date, text: t)
+        items.append(a)
         if items.count > 300 { items.removeFirst(items.count - 300) }
+        if key == "panels", let sink {
+            Task { @MainActor in
+                if let rid = await sink(date, t), let i = self.items.firstIndex(where: { $0.id == a.id }) { self.items[i].remoteId = rid }
+            }
+        }
     }
 }
 
@@ -133,9 +142,14 @@ struct AnnotationsListView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             ForEach(store.items.sorted { $0.date > $1.date }) { a in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(a.text)
-                    Text(ruDate(a.date)).font(.caption).foregroundStyle(.secondary)
+                NavigationLink { BeforeAfterView(date: a.date, title: a.text) } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(a.text)
+                            if a.remoteId != nil { Image(systemName: "icloud.fill").font(.caption2).foregroundStyle(.secondary) }
+                        }
+                        Text(ruDate(a.date) + " · сравнить до и после").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             .onDelete { idx in

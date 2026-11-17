@@ -4,6 +4,12 @@
 <dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна, чтобы считать QR-наклейку на сервере.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Микрофон нужен, чтобы задавать вопросы мониторингу голосом.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Распознавание речи превращает голосовой вопрос в текст.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Чтобы добавить плановые работы Zabbix в ваш Календарь.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

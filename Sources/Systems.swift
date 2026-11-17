@@ -299,6 +299,9 @@ struct SystemsView: View {
                                 NavigationLink(value: "compare") { simpleCard("chart.xyaxis.line", "Сравнение хостов", "Несколько хостов на одном графике", color: Level.ok.color) }
                                 NavigationLink(value: "sla") { simpleCard("checkmark.seal", "Доступность (SLA)", "Филиалы за 7 и 30 дней, цель и простои", color: Level.ok.color) }
                                 NavigationLink(value: "disks") { simpleCard("chart.line.uptrend.xyaxis", "Прогноз дисков", "Когда закончится место", color: Level.ok.color) }
+                                NavigationLink(value: "racks") { simpleCard("server.rack", "Стойки", "Серверы по юнитам с их состоянием", color: Level.ok.color) }
+                                NavigationLink(value: "ar") { simpleCard("arkit", "AR в серверной", "Карточки над QR-наклейками", color: Level.ok.color) }
+                                NavigationLink(value: "audit") { simpleCard("person.badge.clock", "Кто менял Zabbix", "Журнал аудита за неделю", color: Level.ok.color) }
                             }
                         }
                     }
@@ -318,6 +321,10 @@ struct SystemsView: View {
                 case "compare": CompareView()
                 case "vcal": VeeamCalendarView()
                 case "sla", "sla7": SLAView()
+                case "racks": RackListView()
+                case "rack": RackListView()
+                case "audit": AuditView()
+                case "ar": ARServerRoomView()
                 default:
                     if let s = systemScreens.first(where: { $0.id == id }) {
                         SystemDetailView(screen: s, model: model, path: $path)

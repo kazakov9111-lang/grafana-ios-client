@@ -208,6 +208,7 @@ struct MaintenanceSheet: View {
                 Button("Да, создать") {
                     busy = true; error = nil
                     Task {
+                        guard await FaceGate.ok("Создать обслуживание в Zabbix") else { busy = false; return }
                         do {
                             try await session.createMaintenance(host: host, hours: hours, note: note)
                             result = "Обслуживание включено до \(Date().addingTimeInterval(Double(hours) * 3600).formatted(date: .omitted, time: .shortened))"
@@ -315,6 +316,7 @@ struct ScriptsSheet: View {
     private func run(_ s: ZScript) {
         running = s.id; error = nil
         Task {
+            guard await FaceGate.ok("Запустить скрипт «\(s.name)»") else { running = nil; return }
             do { output = try await session.runScript(s, hostId: host.id); Haptics.success() }
             catch { output = nil; self.error = explainScriptError(error); Haptics.error() }
             running = nil
@@ -499,12 +501,16 @@ struct IncidentDetailView: View {
 final class DeepLink: ObservableObject {
     static let shared = DeepLink()
     @Published var host: HostMini?
+    @Published var problem: ProblemRef?
 
     static func url(_ h: HostMini) -> String {
         "grafanaapp://host/\(h.id)?name=" + (h.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? h.name)
     }
 
     func open(url: URL) {
+        if url.scheme == "grafanaapp", url.host == "problem", let id = url.pathComponents.filter({ $0 != "/" }).first {
+            problem = ProblemRef(id: id); return
+        }
         guard url.scheme == "grafanaapp", url.host == "host" else { return }
         let id = url.pathComponents.filter { $0 != "/" }.first ?? ""
         let name = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "name" }?.value ?? id

@@ -154,10 +154,10 @@ enum Demo {
             let names = Set(params["filter"]["name"].array.compactMap { $0.string })
             let search = params["search"]["name"].string
             var out: [JSON] = []
-            for h in hosts where hids.contains(h.id) {
+            for h in hosts where hids.isEmpty ? search != nil : hids.contains(h.id) {
                 for (i, it) in h.items.enumerated() {
                     if !names.isEmpty && !names.contains(it.0) { continue }
-                    if let search, !it.0.contains(search) { continue }
+                    if let search, !it.0.localizedCaseInsensitiveContains(search) && !h.name.localizedCaseInsensitiveContains(search) { continue }
                     out.append(.object(["itemid": .string("\(h.id)\(i)"), "name": .string(it.0),
                                         "lastvalue": .string(String(it.1)), "units": .string(it.2), "hostid": .string(h.id)]))
                 }

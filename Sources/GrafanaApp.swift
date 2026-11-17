@@ -86,8 +86,14 @@ struct MainTabs: View {
                     .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { link.host = nil } } }
             }
         }
+        .sheet(item: $link.problem) { r in
+            ProblemLinkView(eventId: r.id) { link.problem = nil }
+        }
         .onOpenURL { DeepLink.shared.open(url: $0) }
-        .task { await session.indexSpotlight() }
+        .task {
+            await session.indexSpotlight()
+            await session.syncAnnotations()
+        }
         .onContinueUserActivity(CSSearchableItemActionType) { a in
             if let id = a.userInfo?[CSSearchableItemActivityIdentifier] as? String { DeepLink.shared.openSpotlight(id) }
         }
@@ -151,6 +157,10 @@ struct SettingsView: View {
     @AppStorage("liveActivity") private var liveActivity = false
     @AppStorage("glassCards") private var glassCards = false
     @AppStorage("notifyNew") private var notifyNew = true
+    @AppStorage("faceIdWrites") private var faceIdWrites = true
+    @AppStorage("annoToGrafana") private var annoToGrafana = true
+    @AppStorage("pushMetrics") private var pushMetrics = false
+    @AppStorage("foldDeps") private var foldDeps = true
 
     var body: some View {
         NavigationStack {
@@ -191,13 +201,24 @@ struct SettingsView: View {
                 } header: { Text("Оформление") } footer: {
                     Text("Экран блокировки и Dynamic Island показывают число проблем и самую серьёзную. Обновляется, пока приложение запущено или в фоне (без push-сервера). Стекло — только на iOS 26. Уведомления о новых высоких проблемах приходят при фоновом обновлении (iOS запускает его сама, раз в 15–60 минут); если их нет — включите баннеры в Настройках iOS → Grafana → Уведомления.")
                 }
-                Section("Безопасность") {
+                Section {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
+                    Toggle(isOn: $faceIdWrites) { Label("Face ID перед изменениями в Zabbix", systemImage: "lock.shield") }
+                } header: { Text("Безопасность") } footer: {
+                    Text("Закрыть, отложить, сменить важность, массово подтвердить, обслуживание и скрипты — только после Face ID.")
+                }
+                Section {
+                    NavigationLink { NtfySetupView() } label: { Label("Мгновенные уведомления (ntfy)", systemImage: "bell.and.waves.left.and.right") }
+                    Toggle(isOn: $annoToGrafana) { Label("Метки ↔ аннотации Grafana", systemImage: "pin.circle") }
+                    Toggle(isOn: $foldDeps) { Label("Сворачивать зависимые проблемы", systemImage: "arrow.turn.down.right") }
+                    Toggle(isOn: $pushMetrics) { Label("Метрики приложения в Zabbix", systemImage: "arrow.up.doc") }
+                } header: { Text("Связь с Zabbix и Grafana") } footer: {
+                    Text("Метки с графиков уходят в Grafana с тегом mobile-app, а аннотации из Grafana видны на графиках здесь. Зависимости задаются в карточке хоста. Метрики приложения (задержка, ошибки, время до подтверждения) отправляются в хост «mobile-app» через history.push — сначала на сервере нужен такой хост с элементами-ловушками.")
                 }
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.8").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 2.9").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }

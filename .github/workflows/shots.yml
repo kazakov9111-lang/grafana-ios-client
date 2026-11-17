@@ -105,6 +105,14 @@ jobs:
           shot 69-shift --tab 1 --screen shift
           shot 70-maint --tab 1 --screen maint
           shot 71-replay --tab 2 --screen replay --system map
+          shot 72-globe --tab 2 --screen globe --system map
+          shot 73-racks --tab 2 --system racks
+          shot 74-audit --tab 2 --system audit
+          shot 75-ar --tab 2 --system ar
+          shot 76-search --tab 4 --screen search-all
+          WAIT=12 shot 77-wall --tab 4 --screen wall
+          shot 78-chat --tab 0 --screen chat
+          WAIT=14 shot 79-fcast --tab 4
           mkdir -p shots/crash
           cp ~/Library/Logs/DiagnosticReports/Grafana* shots/crash/ 2>/dev/null || true
           ls shots/crash

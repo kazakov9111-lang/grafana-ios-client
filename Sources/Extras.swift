@@ -265,6 +265,7 @@ struct HostExplorerView: View {
                 }
             }
             HostNoteSection(hostId: host.id)
+            HostDependencySection(host: host)
             HostActionsSection(host: host)
             if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
             Section("Показатели (\(shown.count))") {
@@ -654,6 +655,7 @@ struct BranchMapView: View {
     @State private var hoursAgo: Double = Launch.screen == "replay" ? 9 : 0
     @State private var pings: [Series] = []
     @State private var loadingReplay = false
+    @State private var globe = Launch.screen == "globe"
 
     private var replayTime: Date { Date().addingTimeInterval(-hoursAgo * 3600) }
 
@@ -758,6 +760,8 @@ struct BranchMapView: View {
         }
         .navigationTitle("Карта филиалов")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { Button { globe = true } label: { Image(systemName: "globe.europe.africa") } }
+        .fullScreenCover(isPresented: $globe) { GlobeView() }
     }
 
     private func line(_ p: BranchPoint, _ color: Color, _ r: HostRow) -> some View {

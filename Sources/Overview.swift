@@ -96,7 +96,7 @@ struct OverviewView: View {
     @EnvironmentObject var pins: Pins
     @StateObject private var model = OverviewModel()
     @StateObject private var panels = PanelsModel()
-    @State private var ask = Launch.screen == "ask"
+    @State private var ask = Launch.screen == "ask" || Launch.screen == "chat"
     @State private var path: NavigationPath = {
         var p = NavigationPath()
         if let c = Launch.check { p.append(c) }
@@ -145,7 +145,7 @@ struct OverviewView: View {
                     Button { ask = true } label: { Image(systemName: "sparkles") }
                 }
             }
-            .sheet(isPresented: $ask) { AskView() }
+            .sheet(isPresented: $ask) { ChatAskView() }
         }
     }
 

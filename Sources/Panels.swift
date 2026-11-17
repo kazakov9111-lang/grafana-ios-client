@@ -322,6 +322,8 @@ struct PanelsView: View {
     @ObservedObject private var customStore = CustomPanelStore.shared
     @State private var duty = Launch.screen == "duty"
     @State private var carousel = Launch.screen == "carousel"
+    @State private var wall = Launch.screen == "wall"
+    @State private var searchAll = Launch.screen == "search-all"
     @State private var report = Launch.screen == "report" || Launch.screen == "report-light"
     @State private var editMine = Launch.screen == "mine-edit"
     @State private var thrSheet = Launch.screen == "thr"
@@ -418,13 +420,13 @@ struct PanelsView: View {
                         panel("stats")
                         panel("anom")
                         DashRow(id: "servers", title: "Серверы", icon: "server.rack") {
-                            ForEach(["cpu", "week", "band", "status", "xy", "cpu3d", "mem"], id: \.self) { panel($0) }
+                            ForEach(["cpu", "fcast", "week", "band", "status", "xy", "cpu3d", "mem"], id: \.self) { panel($0) }
                         }
                         DashRow(id: "net", title: "Сеть и филиалы", icon: "network") {
                             ForEach(["nodes", "rtt", "box", "hist", "timeline"], id: \.self) { panel($0) }
                         }
                         DashRow(id: "problems", title: "Проблемы", icon: "exclamationmark.triangle") {
-                            ForEach(["stack", "calendar", "hourheat", "noisy", "donut", "honey"], id: \.self) { panel($0) }
+                            ForEach(["stack", "lanes", "calendar", "hourheat", "noisy", "donut", "honey"], id: \.self) { panel($0) }
                         }
                         DashRow(id: "disks", title: "Диски", icon: "internaldrive") {
                             ForEach(["dfc", "treemap", "disk"], id: \.self) { panel($0) }
@@ -458,6 +460,8 @@ struct PanelsView: View {
             .onChange(of: model.groupIndex) { _ in Task { await model.loadMetrics(session: session); await model.loadWeek(session: session) } }
             .fullScreenCover(isPresented: $duty) { DutyView() }
             .fullScreenCover(isPresented: $carousel) { CarouselView(ids: carouselIds) { panel($0) } }
+            .fullScreenCover(isPresented: $wall) { WallView(model: model, ids: carouselIds) { panel($0) } }
+            .sheet(isPresented: $searchAll) { SearchAllView() }
             .sheet(isPresented: $report) { ReportSheet() }
             .sheet(isPresented: $editMine) { CustomPanelsEditor() }
             .sheet(isPresented: $rangeSheet) { CustomRangeSheet(model: model) }
@@ -468,7 +472,9 @@ struct PanelsView: View {
                         if model.loading { ProgressView() }
                         Button { duty = true } label: { Image(systemName: "tv") }
                         Menu {
+                            Button { wall = true } label: { Label("Режим «стена» (альбомный)", systemImage: "tv.and.mediabox") }
                             Button { carousel = true } label: { Label("Карусель панелей", systemImage: "rectangle.on.rectangle") }
+                            Button { searchAll = true } label: { Label("Поиск по всему", systemImage: "magnifyingglass") }
                             Button { path.append("sla") } label: { Label("Доступность филиалов (SLA)", systemImage: "checkmark.seal") }
                             Button { report = true } label: { Label("Отчёт за неделю (PDF)", systemImage: "doc.richtext") }
                             Button { editMine = true } label: { Label("Мои панели…", systemImage: "square.grid.2x2") }
@@ -516,6 +522,8 @@ struct PanelsView: View {
                            values: model.rtt.flatMap { $0.points.map { $0.v } }, scale: 1000, suffix: " мс", bins: 12)
         case "timeline": timeline
         case "stack": StackedProblemsPanel(events: model.history)
+        case "lanes": LanesPanel(events: model.history)
+        case "fcast": ForecastPanel()
         case "donut": donut
         case "honey": honeycomb
         case "disk": gaugeList("disk", title: "Заполнение дисков", subtitle: "bar gauge")

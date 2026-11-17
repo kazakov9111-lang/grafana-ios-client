@@ -287,6 +287,7 @@ struct ProblemActionsSection: View {
     private func run(_ p: Pending) {
         busy = true; error = nil; result = nil
         Task {
+            guard await FaceGate.ok("Изменить проблему в Zabbix") else { busy = false; return }
             do {
                 switch p {
                 case .suppress(let d, let label): try await session.suppress(problem, until: d); result = "Отложено \(label)"
@@ -524,6 +525,7 @@ struct ShiftReportView: View {
 // MARK: Плановые работы
 
 struct MaintenanceListView: View {
+    @State private var calMsg: String?
     @EnvironmentObject var session: Session
     @Environment(\.dismiss) private var dismiss
     @State private var items: [ZMaintenance] = []
@@ -539,6 +541,7 @@ struct MaintenanceListView: View {
                     Text("Сейчас плановых работ нет.").foregroundStyle(.secondary)
                 }
                 if let error { Text(error).font(.footnote).foregroundStyle(.orange) }
+                if let calMsg { Text(calMsg).font(.footnote).foregroundStyle(.secondary) }
                 ForEach(items) { m in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -550,8 +553,14 @@ struct MaintenanceListView: View {
                                                : "с \(ruDate(m.since)) до \(ruDate(m.till))")
                             .font(.caption).foregroundStyle(.secondary)
                         if !m.note.isEmpty { Text(m.note).font(.caption) }
-                        if m.mine && m.since <= Date() {
-                            Button("Завершить досрочно") { ending = m }.font(.caption).buttonStyle(.bordered).tint(.orange)
+                        HStack {
+                            if m.mine && m.since <= Date() {
+                                Button("Завершить досрочно") { ending = m }.font(.caption).buttonStyle(.bordered).tint(.orange)
+                            }
+                            if m.till > Date() {
+                                Button { Task { calMsg = await CalendarExport.add(m) } } label: { Label("В Календарь", systemImage: "calendar.badge.plus") }
+                                    .font(.caption).buttonStyle(.bordered)
+                            }
                         }
                     }
                     .padding(.vertical, 2)
@@ -567,6 +576,7 @@ struct MaintenanceListView: View {
                                 titleVisibility: .visible, presenting: ending) { m in
                 Button("Завершить", role: .destructive) {
                     Task {
+                        guard await FaceGate.ok("Завершить обслуживание в Zabbix") else { return }
                         do { try await session.deleteMaintenance(m.id); Haptics.success(); await load() }
                         catch { self.error = explainZabbixWrite(error); Haptics.error() }
                     }
