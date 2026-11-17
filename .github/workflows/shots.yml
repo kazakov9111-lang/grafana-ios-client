@@ -66,6 +66,11 @@ jobs:
           shot 34-timeline --tab 4 --panelset timeline,donut
           shot 35-rows --tab 4
           shot 36-branches --tab 3 --screen branches
+          shot 37-week --tab 4 --panelset week,dfc
+          shot 38-nodes --tab 4 --panelset nodes,box
+          shot 39-calendar --tab 4 --panelset calendar,noisy
+          shot 40-fullscreen --tab 4 --panelset cpu --screen fullscreen
+          shot 41-servers --tab 2 --system servers
           shot 29-compare --tab 2 --screen compare
           shot 30-vcal --tab 2 --screen vcal
           shot 31-duty --tab 4 --screen duty

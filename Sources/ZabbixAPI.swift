@@ -95,6 +95,10 @@ extension Session {
 
     /// История показателя одного хоста (через бэкенд Zabbix-плагина Grafana).
     func hostSeries(host: String, filter: String, range: TimeRange, group: String = "/.*/") async throws -> [Series] {
+        try await hostSeries(host: host, filter: filter, seconds: range.seconds, group: group, maxPoints: 200)
+    }
+
+    func hostSeries(host: String, filter: String, seconds: Double, group: String = "/.*/", maxPoints: Int = 200) async throws -> [Series] {
         guard let ds = await zabbixDS() else { return [] }
         let nowMs = Date().timeIntervalSince1970 * 1000
         let target: JSON = .object([
@@ -106,12 +110,12 @@ extension Session {
             "itemTag": .object(["filter": .string("")]),
             "functions": .array([]), "options": .object([:]),
             "datasource": .object(["uid": .string(ds.uid), "type": .string("alexanderzobnin-zabbix-datasource")]),
-            "intervalMs": .number(Double(max(1000, Int(range.seconds * 1000 / 200)))),
-            "maxDataPoints": .number(200)
+            "intervalMs": .number(Double(max(1000, Int(seconds * 1000 / Double(maxPoints))))),
+            "maxDataPoints": .number(Double(maxPoints))
         ])
         let body: JSON = .object([
             "queries": .array([target]),
-            "from": .string(String(Int(nowMs - range.seconds * 1000))),
+            "from": .string(String(Int(nowMs - seconds * 1000))),
             "to": .string(String(Int(nowMs)))
         ])
         await gate.acquire()

@@ -189,13 +189,13 @@ enum Demo {
             if params["eventids"].array.count > 0 {
                 return res(params["eventids"].array.compactMap { $0.string }.map { id in
                     let n = Int(id.dropFirst()) ?? 0
-                    return .object(["eventid": .string(id), "clock": .string(String(now - (n % 40) * 7200 - 1800))])
+                    return .object(["eventid": .string(id), "clock": .string(String(now - n * 64800 - 1200 + ((n % 7) + 1) * 7200))])
                 })
             }
             var out: [JSON] = []
-            for n in 0..<36 {
+            for n in 0..<120 {
                 let p = problems[n % problems.count]
-                let start = now - n * 11 * 3600 - 1200
+                let start = now - n * 64800 - 1200
                 let open = n < 3
                 out.append(.object([
                     "eventid": .string("E\(n)"), "name": .string(p.name), "clock": .string(String(start)),
@@ -249,7 +249,7 @@ enum Demo {
             var frames: [JSON] = []
             for h in hosts where zbxMatch(gf, h.group) && zbxMatch(hf, h.name) {
                 for it in h.items where zbxMatch(itf, it.0) {
-                    let n = 60
+                    let n = min(400, max(60, Int(spanMs / 600_000)))
                     var times: [JSON] = [], vals: [JSON] = []
                     for k in 0..<n {
                         times.append(.number(nowMs - Double(n - k) * spanMs / Double(n)))
@@ -259,6 +259,10 @@ enum Demo {
                         if it.0 == "ICMP ping" && h.id == "4" && (k >= 20 && k < 27 || k >= 44 && k < 47) { v = 0 }
                         if it.0 == "ICMP ping" && h.id == "7" && k >= 8 && k < 11 { v = 0 }
                         if it.2 == "%" { v = min(100, v) }
+                        if it.0.contains("Space: Used") {
+                            let rise = [0.5, 4, 1.5, 7, 0, 3][(Int(h.id) ?? 1) % 6]
+                            v = min(99, max(1, it.1 - rise * Double(n - k) / Double(n) * spanMs / 604_800_000))
+                        }
                         if it.0.hasPrefix("Veeam: Backups") {
                             let day = Int((nowMs - Double(n - k) * spanMs / Double(n)) / 86_400_000)
                             let r = (day * 3 + h.id.count * 2 + it.0.count) % 7

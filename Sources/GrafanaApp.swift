@@ -6,6 +6,7 @@ struct GrafanaApp: App {
     @StateObject private var lock = AppLock()
     @StateObject private var router = Router()
     @StateObject private var pins = Pins()
+    @StateObject private var chartSync = ChartSync()
     @Environment(\.scenePhase) private var phase
 
     init() { Badge.register() }
@@ -20,6 +21,7 @@ struct GrafanaApp: App {
             .environmentObject(lock)
             .environmentObject(router)
             .environmentObject(pins)
+            .environmentObject(chartSync)
             .environment(\.locale, Locale(identifier: "ru_RU"))
             .preferredColorScheme(.dark)
             .onChange(of: phase) { newPhase in
@@ -155,7 +157,7 @@ struct SettingsView: View {
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.2").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 2.3").font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }

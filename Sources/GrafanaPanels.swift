@@ -64,6 +64,7 @@ struct DashRow<Content: View>: View {
 
 struct StatusHistoryPanel: View {
     let series: [Series]
+    @Environment(\.drillDown) private var drill
     var title = "Загрузка CPU по серверам"
     var subtitle = "status history"
 
@@ -80,6 +81,7 @@ struct StatusHistoryPanel: View {
                          end: b.t0.addingTimeInterval(Double(i + 1) * b.step), v: v)
                 }
             }
+            let full = Dictionary(rows.map { (shortName($0.name), $0.name) }, uniquingKeysWith: { a, _ in a })
             PanelCard(title: title, subtitle: subtitle) {
                 Chart(cells) { c in
                     BarMark(xStart: .value("с", c.start), xEnd: .value("по", c.end), y: .value("хост", c.host), height: .fixed(17))
@@ -91,6 +93,14 @@ struct StatusHistoryPanel: View {
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                         AxisValueLabel(format: .dateTime.hour().minute().locale(Locale(identifier: "ru_RU")))
+                    }
+                }
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        Rectangle().fill(Color.clear).contentShape(Rectangle()).onTapGesture { loc in
+                            let y = loc.y - geo[proxy.plotAreaFrame].origin.y
+                            if let n: String = proxy.value(atY: y), let f = full[n] { drill?(f) }
+                        }
                     }
                 }
                 .frame(height: CGFloat(names.count) * 22 + 26)
@@ -153,7 +163,7 @@ struct BandPanel: View {
                         AxisValueLabel(format: .dateTime.hour().minute().locale(Locale(identifier: "ru_RU")))
                     }
                 }
-                .frame(height: height)
+                .chartH(height)
                 HStack(spacing: 14) {
                     dot(Level.warn.color, "максимум"); dot(accent, "среднее"); dot(Level.ok.color, "минимум")
                 }
@@ -207,7 +217,7 @@ struct StackedProblemsPanel: View {
                     AxisValueLabel(format: .dateTime.day().month(.abbreviated).locale(Locale(identifier: "ru_RU")))
                 }
             }
-            .frame(height: 160)
+            .chartH(160)
             HStack(spacing: 14) {
                 ForEach(sevs.reversed(), id: \.0) { s in
                     HStack(spacing: 4) { Circle().fill(s.2).frame(width: 7, height: 7); Text(s.1).font(.caption2).foregroundStyle(.secondary) }
@@ -254,7 +264,7 @@ struct HistogramPanel: View {
                         AxisValueLabel().font(.caption2)
                     }
                 }
-                .frame(height: 130)
+                .chartH(130)
                 HStack {
                     stat("медиана", String(format: "%.0f%@", med, suffix))
                     Spacer()
@@ -287,6 +297,7 @@ struct HistogramPanel: View {
 struct XYPanel: View {
     let cpu: [Series]
     let mem: [Series]
+    @Environment(\.drillDown) private var drill
 
     private struct P: Identifiable { let id: String; let name: String; let x: Double; let y: Double }
 
@@ -326,7 +337,18 @@ struct XYPanel: View {
                         AxisValueLabel { if let d = v.as(Double.self) { Text("\(Int(d))%").font(.caption2) } }
                     }
                 }
-                .frame(height: 250)
+                .chartOverlay { proxy in
+                    GeometryReader { geo in
+                        Rectangle().fill(Color.clear).contentShape(Rectangle()).onTapGesture { loc in
+                            let o = geo[proxy.plotAreaFrame].origin
+                            guard let x: Double = proxy.value(atX: loc.x - o.x), let y: Double = proxy.value(atY: loc.y - o.y),
+                                  let best = pts.min(by: { hypot($0.x - x, $0.y - y) < hypot($1.x - x, $1.y - y) }),
+                                  hypot(best.x - x, best.y - y) < 9 else { return }
+                            drill?(best.id)
+                        }
+                    }
+                }
+                .chartH(250)
                 HStack {
                     Text("по горизонтали — CPU, по вертикали — память").font(.caption2).foregroundStyle(.secondary)
                     Spacer()

@@ -395,6 +395,7 @@ struct SystemDetailView: View {
     @ObservedObject var model: SystemsModel
     @Binding var path: NavigationPath
     @State private var opened = false
+    @State private var sparks: [String: [Pt]] = [:]
 
     var body: some View {
         let rows = model.rows[screen.id] ?? []
@@ -412,6 +413,7 @@ struct SystemDetailView: View {
         .navigationTitle(screen.title)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await model.load(screen, session: session) }
+        .task { await loadSparks() }
         .onChange(of: rows.count) { _ in autoOpen(rows) }
         .onAppear { autoOpen(rows) }
     }
@@ -446,6 +448,14 @@ struct SystemDetailView: View {
         .padding(.vertical, 4)
     }
 
+    private func loadSparks() async {
+        guard let c = screen.cols.first(where: { $0.chart }) else { return }
+        let ser = (try? await session.hostSeries(host: screen.host, filter: c.historyFilter, range: .h6, group: screen.group)) ?? []
+        var out: [String: [Pt]] = [:]
+        for x in ser where out[x.host.isEmpty ? x.name : x.host] == nil { out[x.host.isEmpty ? x.name : x.host] = x.points }
+        sparks = out
+    }
+
     private func autoOpen(_ rows: [HostRow]) {
         guard !opened, let i = Launch.host, let r = rows[safe: i] else { return }
         opened = true
@@ -459,6 +469,10 @@ struct SystemDetailView: View {
                 Text(r.name).font(.subheadline.weight(.semibold)).lineLimit(1)
                 if r.maintenance {
                     Label("обслуживание", systemImage: "wrench.and.screwdriver").font(.caption2).foregroundStyle(.orange)
+                }
+                Spacer(minLength: 4)
+                if let pts = sparks[r.name], pts.count > 2 {
+                    Sparkline(points: pts, color: r.level == .none ? Level.ok.color : r.level.color).frame(width: 72, height: 24)
                 }
             }
             HStack(alignment: .top, spacing: 0) {
@@ -626,7 +640,13 @@ struct TimeSeriesChart: View {
     var thresholds: [(value: Double, color: Color)] = []
     var showLegend = true
     var markers: [Date] = []
-    @State private var sel: Date?
+    @EnvironmentObject private var sync: ChartSync
+    @Environment(\.fsHeight) private var fs
+    @State private var dragA: CGFloat?
+    @State private var dragB: CGFloat?
+    private var sel: Date? { sync.crosshair }
+
+    private func inZoom(_ t: Date) -> Bool { sync.zoom.map { $0.contains(t) } ?? true }
 
     private func nearest(_ s: Series, to d: Date) -> Pt? {
         s.points.min { abs($0.t.timeIntervalSince(d)) < abs($1.t.timeIntervalSince(d)) }
@@ -645,11 +665,16 @@ struct TimeSeriesChart: View {
             let hi = unit == "percent" ? 100 : (vals.max() ?? 1)
             let pad = max((hi - lo) * 0.12, 0.5)
             let domain = unit == "percent" ? 0.0...100.0 : max(0, lo - pad)...(hi + pad)
+            let allT = shown.flatMap { $0.points.map { $0.t } }
+            let fullRange = (allT.min() ?? Date())...(allT.max() ?? Date())
             VStack(alignment: .leading, spacing: 6) {
+                if fs != nil, sync.zoom != nil {
+                    Button { sync.zoom = nil } label: { Label("Сбросить масштаб", systemImage: "arrow.counterclockwise") }.font(.caption)
+                }
                 readout(shown)
                 Chart {
                     ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
-                        ForEach(s.points) { p in
+                        ForEach(s.points.filter { inZoom($0.t) }) { p in
                             if shown.count <= 2 {
                                 AreaMark(x: .value("t", p.t), yStart: .value("0", domain.lowerBound), yEnd: .value("v", p.v),
                                          series: .value("a", s.name))
@@ -663,7 +688,7 @@ struct TimeSeriesChart: View {
                                 .interpolationMethod(.monotone)
                         }
                     }
-                    ForEach(markers, id: \.self) { d in
+                    ForEach(markers.filter { $0 >= fullRange.lowerBound && $0 <= fullRange.upperBound }, id: \.self) { d in
                         RuleMark(x: .value("событие", d))
                             .foregroundStyle(Level.bad.color.opacity(0.55))
                             .lineStyle(StrokeStyle(lineWidth: 1.2, dash: [2, 3]))
@@ -675,7 +700,7 @@ struct TimeSeriesChart: View {
                                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 4]))
                         }
                     }
-                    if let sel {
+                    if let sel, sel >= fullRange.lowerBound, sel <= fullRange.upperBound {
                         RuleMark(x: .value("sel", sel)).foregroundStyle(Color.white.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                         ForEach(Array(shown.enumerated()), id: \.element.id) { idx, s in
@@ -686,6 +711,7 @@ struct TimeSeriesChart: View {
                     }
                 }
                 .chartYScale(domain: domain)
+                .chartXScale(domain: sync.zoom ?? fullRange)
                 .chartXAxis {
                     AxisMarks(values: .automatic(desiredCount: 4)) { _ in
                         AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5)).foregroundStyle(Color.white.opacity(0.12))
@@ -702,11 +728,20 @@ struct TimeSeriesChart: View {
                 }
                 .chartOverlay { proxy in
                     GeometryReader { geo in
-                        Rectangle().fill(Color.clear).contentShape(Rectangle())
-                            .gesture(SpatialTapGesture().onEnded { e in
-                                let x = e.location.x - geo[proxy.plotAreaFrame].origin.x
-                                if let d: Date = proxy.value(atX: x) { sel = (sel == nil ? d : nil) }
-                            })
+                        ZStack(alignment: .topLeading) {
+                            Rectangle().fill(Color.clear).contentShape(Rectangle())
+                                .gesture(SpatialTapGesture().onEnded { e in
+                                    let x = e.location.x - geo[proxy.plotAreaFrame].origin.x
+                                    if let d: Date = proxy.value(atX: x) { sync.crosshair = (sync.crosshair == nil ? d : nil) }
+                                })
+                                .modifier(ZoomGestures(enabled: fs != nil, proxy: proxy, geo: geo, full: fullRange,
+                                                       sync: sync, a: $dragA, b: $dragB))
+                            if let a = dragA, let b = dragB {
+                                Rectangle().fill(Color.orange.opacity(0.2))
+                                    .frame(width: abs(b - a), height: geo.size.height)
+                                    .offset(x: min(a, b)).allowsHitTesting(false)
+                            }
+                        }
                     }
                 }
                 if shown.count == 1, let one = shown.first { SeriesStats(series: one, unit: unit) }
@@ -736,7 +771,8 @@ struct TimeSeriesChart: View {
                 Spacer()
             }
         } else {
-            Text("Нажмите на график, чтобы увидеть значение").font(.caption2).foregroundStyle(.tertiary)
+            Text(fs != nil ? "Проведите по графику, чтобы приблизить интервал; щипок меняет масштаб" : "Нажмите на график, чтобы увидеть значение")
+                .font(.caption2).foregroundStyle(.tertiary)
         }
     }
 }
