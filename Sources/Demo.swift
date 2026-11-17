@@ -164,9 +164,14 @@ enum Demo {
             }
             return res(out)
         case "script.get":
-            return res([("1", "Ping"), ("2", "Traceroute"), ("3", "Проверка порта 443")].map {
-                .object(["scriptid": .string($0.0), "name": .string($0.1), "scope": .string("2"), "confirmation": .string("")])
+            return res([("1", "Ping", "0", ""), ("2", "Traceroute", "0", ""),
+                        ("7", "Веб-интерфейс (https)", "6", "https://{HOST.CONN}/"),
+                        ("11", "Последние данные узла", "6", "zabbix.php?action=latest.view&filter_set=1&hostids%5B%5D={HOST.ID}")].map {
+                .object(["scriptid": .string($0.0), "name": .string($0.1), "scope": .string("2"), "confirmation": .string(""),
+                         "type": .string($0.2), "url": .string($0.3)])
             })
+        case "hostinterface.get":
+            return res([.object(["ip": .string("10.10.1.20"), "dns": .string(""), "useip": .string("1"), "main": .string("1")])])
         case "script.execute":
             return .object(["result": .object(["response": .string("success"), "value": .string("""
             PING 10.10.1.20 (10.10.1.20) 56(84) bytes of data.

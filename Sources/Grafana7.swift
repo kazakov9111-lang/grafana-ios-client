@@ -37,6 +37,24 @@ struct ZScript: Identifiable, Hashable {
     let id: String
     let name: String
     let confirmation: String
+    var type = "0"        // 6 = ссылка (URL), остальные выполняются на сервере/прокси
+    var url = ""
+    var isLink: Bool { type == "6" }
+}
+
+/// Понятное объяснение типовых отказов Zabbix при запуске скриптов.
+func explainScriptError(_ e: Error) -> String {
+    let m = e.localizedDescription
+    if m.contains("Remote commands are not enabled") {
+        return "Хост опрашивается через прокси Zabbix, а на прокси выключены удалённые команды. Чтобы скрипты заработали, администратор включает EnableRemoteCommands=1 в zabbix_proxy.conf и перезапускает прокси. Ссылки из раздела «Открыть» работают и без этого."
+    }
+    if m.contains("Global script execution") {
+        return "На сервере Zabbix выключено выполнение скриптов. Чтобы они заработали, администратор включает EnableGlobalScripts=1 в zabbix_server.conf и перезапускает сервер. Ссылки из раздела «Открыть» работают и без этого."
+    }
+    if m.lowercased().contains("permission") || m.contains("No permissions") {
+        return "У пользователя Zabbix нет прав на этот скрипт или хост. Проверьте токен в Настройках → «Подтверждение проблем».\n\n" + m
+    }
+    return m
 }
 
 extension Session {
@@ -72,13 +90,43 @@ extension Session {
     func hostScripts(_ hostId: String) async throws -> [ZScript] {
         let r = try await zabbixResult("script.get", [
             "hostids": .array([.string(hostId)]),
-            "output": .array(["scriptid", "name", "scope", "confirmation"].map { .string($0) })
+            "output": .array(["scriptid", "name", "scope", "confirmation", "type", "url"].map { .string($0) })
         ])
         return r.array.compactMap { s in
             guard let id = s["scriptid"].string, let n = s["name"].string else { return nil }
             if let sc = s["scope"].string, sc != "2" { return nil }
-            return ZScript(id: id, name: n, confirmation: s["confirmation"].string ?? "")
+            return ZScript(id: id, name: n, confirmation: s["confirmation"].string ?? "",
+                           type: s["type"].string ?? "0", url: s["url"].string ?? "")
         }
+    }
+
+    /// Адрес хоста для {HOST.CONN}: IP или DNS основного интерфейса.
+    func hostConn(_ hostId: String) async -> String? {
+        let r = try? await zabbixResult("hostinterface.get", [
+            "hostids": .array([.string(hostId)]),
+            "output": .array(["ip", "dns", "useip", "main"].map { .string($0) })
+        ])
+        let list = r?.array ?? []
+        guard let i = list.first(where: { $0["main"].string == "1" }) ?? list.first else { return nil }
+        let ip = i["ip"].string ?? "", dns = i["dns"].string ?? ""
+        return (i["useip"].string == "0" && !dns.isEmpty) ? dns : (ip.isEmpty ? dns : ip)
+    }
+
+    /// Готовая ссылка для скрипта-ссылки, или nil, если её не собрать.
+    func linkURL(_ s: ZScript, host: HostMini, conn: String?) -> URL? {
+        var u = s.url
+        u = u.replacingOccurrences(of: "{HOST.ID}", with: host.id)
+        u = u.replacingOccurrences(of: "{HOST.NAME}", with: host.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? host.name)
+        u = u.replacingOccurrences(of: "{HOST.HOST}", with: host.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? host.name)
+        if u.contains("{HOST.CONN}") || u.contains("{HOST.IP}") || u.contains("{HOST.DNS}") {
+            guard let conn else { return nil }
+            for m in ["{HOST.CONN}", "{HOST.IP}", "{HOST.DNS}"] { u = u.replacingOccurrences(of: m, with: conn) }
+        }
+        if u.contains("{") { return nil }
+        if u.hasPrefix("http://") || u.hasPrefix("https://") { return URL(string: u) }
+        // относительная ссылка на веб-интерфейс Zabbix — нужен адрес Zabbix из настроек
+        guard let api = ZabbixDirect.config?.url ?? (demo ? URL(string: "https://zabbix.example.com/api_jsonrpc.php") : nil) else { return nil }
+        return URL(string: u, relativeTo: api.deletingLastPathComponent())?.absoluteURL
     }
 
     func runScript(_ s: ZScript, hostId: String) async throws -> String {
@@ -186,27 +234,55 @@ struct ScriptsSheet: View {
     @State private var running: String?
     @State private var output: String?
     @State private var error: String?
+    @State private var conn: String?
+    @Environment(\.openURL) private var openURL
+
+    private var links: [ZScript] { scripts.filter(\.isLink) }
+    private var commands: [ZScript] { scripts.filter { !$0.isLink } }
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    if loading { ProgressView() }
-                    if !loading && scripts.isEmpty && error == nil {
-                        Text("Для этого хоста в Zabbix нет скриптов, доступных для ручного запуска.").font(.footnote).foregroundStyle(.secondary)
-                    }
-                    ForEach(scripts) { s in
-                        Button { pending = s } label: {
-                            HStack {
-                                Label(s.name, systemImage: "play.circle")
-                                Spacer()
-                                if running == s.id { ProgressView() }
+                if loading { Section { ProgressView() } }
+                if !loading && scripts.isEmpty && error == nil {
+                    Section { Text("Для этого хоста в Zabbix нет скриптов, доступных для ручного запуска.").font(.footnote).foregroundStyle(.secondary) }
+                }
+                if !links.isEmpty {
+                    Section {
+                        ForEach(links) { s in
+                            if let u = session.linkURL(s, host: host, conn: conn) {
+                                Button { openURL(u) } label: {
+                                    HStack {
+                                        Label(s.name, systemImage: "arrow.up.right.square")
+                                        Spacer()
+                                        Text(u.host ?? "").font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                }
+                            } else {
+                                Label(s.name, systemImage: "link").foregroundStyle(.secondary)
                             }
                         }
-                        .disabled(running != nil)
+                    } header: { Text("Открыть") } footer: {
+                        Text(links.contains { session.linkURL($0, host: host, conn: conn) == nil }
+                             ? "Серые ссылки ведут в веб-интерфейс Zabbix: укажите адрес Zabbix в Настройках → «Подтверждение проблем»."
+                             : "Ссылки открываются в Safari.")
                     }
-                } header: { Text(host.name) } footer: {
-                    Text("Скрипт выполняет сервер Zabbix (или прокси) и возвращает вывод сюда. Перед запуском всегда спрашиваю подтверждение.")
+                }
+                if !commands.isEmpty {
+                    Section {
+                        ForEach(commands) { s in
+                            Button { pending = s } label: {
+                                HStack {
+                                    Label(s.name, systemImage: "play.circle")
+                                    Spacer()
+                                    if running == s.id { ProgressView() }
+                                }
+                            }
+                            .disabled(running != nil)
+                        }
+                    } header: { Text("Выполнить на сервере Zabbix") } footer: {
+                        Text("Команду выполняет сервер Zabbix или прокси и возвращает вывод сюда. Перед запуском всегда спрашиваю подтверждение.")
+                    }
                 }
                 if let error { Section { Text(error).foregroundStyle(.orange).font(.footnote) } }
                 if let output {
@@ -218,7 +294,7 @@ struct ScriptsSheet: View {
                     }
                 }
             }
-            .navigationTitle("Диагностика")
+            .navigationTitle("Скрипты Zabbix")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Закрыть") { dismiss() } } }
             .confirmationDialog(pending.map { $0.confirmation.isEmpty ? "Запустить «\($0.name)» на \(host.name)?" : $0.confirmation } ?? "",
@@ -228,9 +304,10 @@ struct ScriptsSheet: View {
                 Button("Отмена", role: .cancel) {}
             }
             .task {
-                do { scripts = try await session.hostScripts(host.id) } catch { self.error = error.localizedDescription }
+                do { scripts = try await session.hostScripts(host.id) } catch { self.error = explainScriptError(error) }
+                if scripts.contains(where: \.isLink) { conn = await session.hostConn(host.id) }
                 loading = false
-                if Launch.screen == "scripts", let s = scripts.first { run(s) }
+                if Launch.screen == "scripts", let s = commands.first { run(s) }
             }
         }
     }
@@ -239,7 +316,7 @@ struct ScriptsSheet: View {
         running = s.id; error = nil
         Task {
             do { output = try await session.runScript(s, hostId: host.id); Haptics.success() }
-            catch { self.error = error.localizedDescription; Haptics.error() }
+            catch { output = nil; self.error = explainScriptError(error); Haptics.error() }
             running = nil
         }
     }

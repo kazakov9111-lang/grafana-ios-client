@@ -14,7 +14,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.grafana
         MARKETING_VERSION: "2.7"
-        CURRENT_PROJECT_VERSION: "18"
+        CURRENT_PROJECT_VERSION: "19"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Info-extra.plist
         SWIFT_VERSION: "5.0"
@@ -34,7 +34,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.personal.grafana.widgets
         MARKETING_VERSION: "2.7"
-        CURRENT_PROJECT_VERSION: "18"
+        CURRENT_PROJECT_VERSION: "19"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: Widgets/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: Grafana
