@@ -120,7 +120,7 @@ extension Session {
             "source": .number(0), "object": .number(0), "value": .number(1),
             "time_from": .number(from),
             "output": .array(["eventid", "clock", "r_eventid"].map { .string($0) }),
-            "select_acknowledges": .array(["clock", "message", "username", "name", "surname"].map { .string($0) }),
+            "selectAcknowledges": .array(["clock", "message", "userid"].map { .string($0) }),
             "sortfield": .array([.string("clock")]), "sortorder": .string("DESC"),
             "limit": .number(30)
         ]).array.filter { $0["eventid"].string != p.id }
@@ -131,13 +131,23 @@ extension Session {
                                                          "output": .array(["eventid", "clock"].map { .string($0) })])
             for e in r.array { if let id = e["eventid"].string, let c = e["clock"].double { closed[id] = c } }
         }
+        // имена авторов: обычному пользователю Zabbix отдаёт только себя — остальных показываем без имени
+        let uids = Array(Set(ev.flatMap { $0["acknowledges"].array.compactMap { $0["userid"].string } }))
+        var names: [String: String] = [:]
+        if !uids.isEmpty, let us = try? await zabbixResult("user.get", ["userids": .array(uids.map { .string($0) }),
+                                                                         "output": .array(["userid", "username", "name", "surname"].map { .string($0) })]) {
+            for u in us.array {
+                let full = [u["name"].string, u["surname"].string].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+                if let id = u["userid"].string { names[id] = full.isEmpty ? (u["username"].string ?? "") : full }
+            }
+        }
         return ev.map { e in
             let acks = e["acknowledges"].array.compactMap { a -> PastAck? in
                 let msg = (a["message"].string ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !msg.isEmpty else { return nil }
-                let full = [a["name"].string, a["surname"].string].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " ")
+                // служебные отметки Telegram-бота («tgmsg:…») — не решения
+                guard !msg.isEmpty, !msg.hasPrefix("tgmsg:") else { return nil }
                 return PastAck(date: Date(timeIntervalSince1970: a["clock"].double ?? 0),
-                               user: full.isEmpty ? (a["username"].string ?? "") : full, message: msg)
+                               user: names[a["userid"].string ?? ""] ?? "", message: msg)
             }
             return PastEvent(id: e["eventid"].string ?? UUID().uuidString,
                              start: Date(timeIntervalSince1970: e["clock"].double ?? 0),

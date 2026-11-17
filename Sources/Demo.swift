@@ -221,8 +221,7 @@ enum Demo {
                     return .object(["eventid": .string("P\(oid)\(n)"), "clock": .string(String(start)), "r_eventid": .string("Q\(n)"),
                                     "acknowledges": .array(m.isEmpty ? [] : [.object([
                                         "clock": .string(String(start + 900)), "message": .string(m),
-                                        "username": .string("admin"), "name": .string(n % 2 == 0 ? "Иван" : "Ольга"),
-                                        "surname": .string(n % 2 == 0 ? "Петров" : "Смирнова")])])])
+                                        "userid": .string(n % 2 == 0 ? "3" : "4")])])])
                 })
             }
             if params["eventids"].array.count > 0, params["eventids"].array.first?.string?.hasPrefix("Q") == true {
@@ -248,6 +247,9 @@ enum Demo {
                     "objectid": .string("\(100 + n % problems.count)"), "acknowledged": .string(n % 3 == 0 ? "1" : "0")]))
             }
             return res(out)
+        case "user.get":
+            return res([.object(["userid": .string("3"), "username": .string("ivanov"), "name": .string("Иван"), "surname": .string("Петров")]),
+                        .object(["userid": .string("4"), "username": .string("smirnova"), "name": .string("Ольга"), "surname": .string("Смирнова")])])
         case "history.get":
             let ids = params["itemids"].array.compactMap { $0.string }
             let now = Int(Date().timeIntervalSince1970)
