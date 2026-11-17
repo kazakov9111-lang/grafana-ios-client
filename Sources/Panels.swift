@@ -322,7 +322,8 @@ struct PanelsView: View {
     @ObservedObject private var customStore = CustomPanelStore.shared
     @State private var duty = Launch.screen == "duty"
     @State private var carousel = Launch.screen == "carousel"
-    @State private var wall = Launch.screen == "wall"
+    @State private var wall = Launch.screen == "wall" || Launch.screen == "wall-night"
+    @State private var dashes = Launch.screen == "dashes" || Launch.screen == "dash"
     @State private var searchAll = Launch.screen == "search-all"
     @State private var report = Launch.screen == "report" || Launch.screen == "report-light"
     @State private var editMine = Launch.screen == "mine-edit"
@@ -462,6 +463,7 @@ struct PanelsView: View {
             .fullScreenCover(isPresented: $carousel) { CarouselView(ids: carouselIds) { panel($0) } }
             .fullScreenCover(isPresented: $wall) { WallView(model: model, ids: carouselIds) { panel($0) } }
             .sheet(isPresented: $searchAll) { SearchAllView() }
+            .sheet(isPresented: $dashes) { DashListView() }
             .sheet(isPresented: $report) { ReportSheet() }
             .sheet(isPresented: $editMine) { CustomPanelsEditor() }
             .sheet(isPresented: $rangeSheet) { CustomRangeSheet(model: model) }
@@ -472,6 +474,7 @@ struct PanelsView: View {
                         if model.loading { ProgressView() }
                         Button { duty = true } label: { Image(systemName: "tv") }
                         Menu {
+                            Button { dashes = true } label: { Label("Дашборды Grafana", systemImage: "square.grid.3x2") }
                             Button { wall = true } label: { Label("Режим «стена» (альбомный)", systemImage: "tv.and.mediabox") }
                             Button { carousel = true } label: { Label("Карусель панелей", systemImage: "rectangle.on.rectangle") }
                             Button { searchAll = true } label: { Label("Поиск по всему", systemImage: "magnifyingglass") }

@@ -50,6 +50,7 @@ struct HealthView: View {
 
     var body: some View {
         List {
+            MetricKitSection()
             Section {
                 HStack(spacing: 10) {
                     Circle().fill(state.color).frame(width: 12, height: 12)

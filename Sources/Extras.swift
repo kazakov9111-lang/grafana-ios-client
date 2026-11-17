@@ -656,6 +656,7 @@ struct BranchMapView: View {
     @State private var pings: [Series] = []
     @State private var loadingReplay = false
     @State private var globe = Launch.screen == "globe"
+    @State private var playing = false
 
     private var replayTime: Date { Date().addingTimeInterval(-hoursAgo * 3600) }
 
@@ -689,6 +690,19 @@ struct BranchMapView: View {
         return out.sorted()
     }
 
+    /// Таймлапс: сутки за 12 секунд.
+    private func play() {
+        playing = true
+        if hoursAgo < 0.5 { hoursAgo = 24 }
+        Task { @MainActor in
+            while playing && hoursAgo > 0 {
+                try? await Task.sleep(nanoseconds: 125_000_000)
+                hoursAgo = max(0, hoursAgo - 0.25)
+            }
+            playing = false
+        }
+    }
+
     private var replaySection: some View {
         Section {
             Toggle(isOn: $replay) { Label("Сутки на карте", systemImage: "clock.arrow.2.circlepath") }
@@ -702,8 +716,14 @@ struct BranchMapView: View {
                         let down = points.filter { $0.override == .bad }.count
                         if hoursAgo > 0 { Text(down == 0 ? "все на связи" : "без связи: \(down)").font(.caption).foregroundStyle(down == 0 ? Color.secondary : Level.bad.color) }
                     }
-                    Slider(value: $hoursAgo, in: 0...24, step: 0.25)
-                        .environment(\.layoutDirection, .rightToLeft)
+                    HStack {
+                        Button { playing ? (playing = false) : play() } label: {
+                            Image(systemName: playing ? "pause.circle.fill" : "play.circle.fill").font(.title2)
+                        }
+                        .buttonStyle(.borderless)
+                        Slider(value: $hoursAgo, in: 0...24, step: 0.25)
+                            .environment(\.layoutDirection, .rightToLeft)
+                    }
                     GeometryReader { g in
                         ForEach(downHours, id: \.self) { h in
                             Rectangle().fill(Level.bad.color.opacity(0.8))

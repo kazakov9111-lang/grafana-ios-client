@@ -299,6 +299,10 @@ struct SystemsView: View {
                                 NavigationLink(value: "compare") { simpleCard("chart.xyaxis.line", "Сравнение хостов", "Несколько хостов на одном графике", color: Level.ok.color) }
                                 NavigationLink(value: "sla") { simpleCard("checkmark.seal", "Доступность (SLA)", "Филиалы за 7 и 30 дней, цель и простои", color: Level.ok.color) }
                                 NavigationLink(value: "disks") { simpleCard("chart.line.uptrend.xyaxis", "Прогноз дисков", "Когда закончится место", color: Level.ok.color) }
+                                NavigationLink(value: "expiring") { simpleCard("hourglass", "Истекает и устаревает", "Сертификаты и бэкапы Veeam", color: Level.ok.color) }
+                                NavigationLink(value: "galerts") { simpleCard("bell.badge", "Алерты Grafana", "Правила и тишина", color: Level.ok.color) }
+                                NavigationLink(value: "zmaps") { simpleCard("point.3.connected.trianglepath.dotted", "Карты Zabbix", "Схемы сети из Zabbix", color: Level.ok.color) }
+                                NavigationLink(value: "plans") { simpleCard("map.fill", "Планы офиса", "Хосты на плане этажа", color: Level.ok.color) }
                                 NavigationLink(value: "racks") { simpleCard("server.rack", "Стойки", "Серверы по юнитам с их состоянием", color: Level.ok.color) }
                                 NavigationLink(value: "ar") { simpleCard("arkit", "AR в серверной", "Карточки над QR-наклейками", color: Level.ok.color) }
                                 NavigationLink(value: "audit") { simpleCard("person.badge.clock", "Кто менял Zabbix", "Журнал аудита за неделю", color: Level.ok.color) }
@@ -322,6 +326,12 @@ struct SystemsView: View {
                 case "vcal": VeeamCalendarView()
                 case "sla", "sla7": SLAView()
                 case "racks": RackListView()
+                case "expiring": ExpiringView()
+                case "galerts": GrafanaAlertsView()
+                case "zmaps": ZabbixMapsView()
+                case "zmap": ZabbixMapView(ref: ZMapRef(id: "1", name: "Сеть офиса"))
+                case "plans": FloorPlanListView()
+                case "plan": FloorPlanView(planId: FloorPlanStore.shared.plans.first?.id ?? UUID())
                 case "rack": RackListView()
                 case "audit": AuditView()
                 case "ar": ARServerRoomView()

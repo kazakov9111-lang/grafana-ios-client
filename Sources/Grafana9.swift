@@ -607,13 +607,15 @@ enum Notifier {
         let known = UserDefaults.standard.stringArray(forKey: "notifiedEvents")
         defer { remember(ps) }
         guard enabled, let known else { return }
-        let fresh = ps.filter { $0.severity >= 4 && !$0.acked && !known.contains($0.id) }
+        let fresh = ps.filter { $0.severity >= 4 && !$0.acked && !known.contains($0.id) && QuietHours.allows($0) }
         for p in fresh.prefix(5) {
             let c = UNMutableNotificationContent()
             c.title = "\(sevName(p.severity)): \(p.host.isEmpty ? "Zabbix" : p.host)"
             c.body = p.name
             c.sound = .default
             c.threadIdentifier = "problems"
+            c.categoryIdentifier = "problem"
+            c.userInfo = ["eventid": p.id]
             UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "p\(p.id)", content: c, trigger: nil))
         }
         if fresh.count > 5 {

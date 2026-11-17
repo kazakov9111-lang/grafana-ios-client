@@ -2,10 +2,27 @@ import SwiftUI
 import WidgetKit
 import ActivityKit
 
+import AppIntents
+
 @main
 struct GrafanaWidgets: WidgetBundle {
     var body: some Widget {
         ProblemLiveActivity()
+        if #available(iOS 18.0, *) { ProblemsControl() }
+    }
+}
+
+/// Кнопка в Пункте управления и на экране блокировки (iOS 18): открывает список проблем.
+@available(iOS 18.0, *)
+struct ProblemsControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "com.personal.grafana.problems") {
+            ControlWidgetButton(action: OpenURLIntent(URL(string: "grafanaapp://problems")!)) {
+                Label("Проблемы", systemImage: "exclamationmark.triangle.fill")
+            }
+        }
+        .displayName("Проблемы Zabbix")
+        .description("Открыть список проблем в Grafana")
     }
 }
 

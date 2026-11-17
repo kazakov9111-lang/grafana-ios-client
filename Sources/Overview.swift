@@ -107,6 +107,7 @@ struct OverviewView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(spacing: 12) {
+                    SignBanner()
                     summary
                     PanelStatsGrid(model: panels)
                     if !Launch.charts {

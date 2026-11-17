@@ -398,6 +398,8 @@ struct WallView<Page: View>: View {
     @Environment(\.dismiss) private var dismiss
     @State private var index = 0
     @State private var clock = Date()
+    @State private var night = Launch.screen == "wall-night"
+    @State private var savedBrightness: CGFloat = 0.5
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     private var worst: Int { model.problems.map(\.severity).max() ?? 0 }
@@ -433,17 +435,30 @@ struct WallView<Page: View>: View {
             .padding(12)
         }
         .background(Color(white: 0.05).ignoresSafeArea())
+        .colorMultiply(night ? Color(red: 1, green: 0.35, blue: 0.3) : .white)
         .overlay(alignment: .topTrailing) {
-            Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").font(.title2).foregroundStyle(.white.opacity(0.4)) }.padding(8)
+            HStack {
+                Button { night.toggle(); applyNight() } label: {
+                    Image(systemName: night ? "moon.fill" : "moon").font(.title2).foregroundStyle(.white.opacity(0.4))
+                }
+                Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").font(.title2).foregroundStyle(.white.opacity(0.4)) }
+            }
+            .padding(8)
         }
         .preferredColorScheme(.dark)
         .statusBarHidden()
-        .onAppear { UIApplication.shared.isIdleTimerDisabled = true }
-        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false }
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = true; savedBrightness = UIScreen.main.brightness; applyNight() }
+        .onDisappear { UIApplication.shared.isIdleTimerDisabled = false; if !Launch.demo { UIScreen.main.brightness = savedBrightness } }
         .onReceive(timer) { t in
             clock = t
             if Int(t.timeIntervalSince1970) % 15 == 0, !ids.isEmpty { withAnimation(.easeInOut(duration: 0.6)) { index += 1 } }
         }
+    }
+
+    /// Ночной режим: красноватые тона и минимальная яркость — телефон на тумбочке у дежурного.
+    private func applyNight() {
+        guard !Launch.demo else { return }
+        UIScreen.main.brightness = night ? 0.05 : savedBrightness
     }
 
     private func tiles(wide: Bool) -> some View {

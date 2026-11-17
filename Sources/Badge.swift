@@ -24,7 +24,9 @@ enum Badge {
             let work = Task {
                 let s = await MainActor.run { session ?? Session() }
                 if await MainActor.run(body: { !s.loggedIn }) { await s.restore() }
+                await ActionQueue.shared.flush(s)
                 if let ps = try? await s.loadProblems() { set(count(ps)); Notifier.notifyNew(ps) }
+                await MorningSummary.maybeSend(s)
                 task.setTaskCompleted(success: true)
             }
             task.expirationHandler = { work.cancel() }

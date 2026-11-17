@@ -10,7 +10,7 @@ struct GrafanaApp: App {
     @StateObject private var chartSync = ChartSync()
     @Environment(\.scenePhase) private var phase
 
-    init() { Badge.register() }
+    init() { Badge.register(); NotifActions.register(); MetricsSink.start() }
 
     var body: some Scene {
         WindowGroup {
@@ -27,9 +27,13 @@ struct GrafanaApp: App {
             .preferredColorScheme(.dark)
             .onChange(of: phase) { newPhase in
                 if newPhase == .background { lock.lockIfNeeded(); Badge.schedule() }
-                if newPhase == .active { Task { await lock.unlock() } }
+                if newPhase == .active { lock.checkTimeout(); Task { await lock.unlock() } }
             }
-            .task { Badge.session = session; if !Launch.demo { await Badge.requestAccess() }; await lock.unlock() }
+            .task {
+                Badge.session = session
+                if !Launch.demo { await Badge.requestAccess(); SignInfo.scheduleReminder() }
+                await lock.unlock()
+            }
         }
     }
 
@@ -89,7 +93,9 @@ struct MainTabs: View {
         .sheet(item: $link.problem) { r in
             ProblemLinkView(eventId: r.id) { link.problem = nil }
         }
-        .onOpenURL { DeepLink.shared.open(url: $0) }
+        .onOpenURL { url in
+            if url.scheme == "grafanaapp", url.host == "problems" { router.tab = 1 } else { DeepLink.shared.open(url: url) }
+        }
         .task {
             await session.indexSpotlight()
             await session.syncAnnotations()
@@ -203,11 +209,18 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle(isOn: $lock.enabled) { Label("Блокировка Face ID", systemImage: "faceid") }
+                    if lock.enabled {
+                        Picker(selection: $lock.timeout) {
+                            Text("Сразу").tag(0); Text("Через 1 мин").tag(1); Text("Через 5 мин").tag(5); Text("Через 15 мин").tag(15)
+                        } label: { Label("Блокировать в фоне", systemImage: "timer") }
+                    }
                     Toggle(isOn: $faceIdWrites) { Label("Face ID перед изменениями в Zabbix", systemImage: "lock.shield") }
                 } header: { Text("Безопасность") } footer: {
                     Text("Закрыть, отложить, сменить важность, массово подтвердить, обслуживание и скрипты — только после Face ID.")
                 }
                 Section {
+                    NavigationLink { QuietHoursView() } label: { Label("Тихие часы", systemImage: "moon.zzz") }
+                    NavigationLink { ProfilesView() } label: { Label("Профили серверов", systemImage: "server.rack") }
                     NavigationLink { NtfySetupView() } label: { Label("Мгновенные уведомления (ntfy)", systemImage: "bell.and.waves.left.and.right") }
                     Toggle(isOn: $annoToGrafana) { Label("Метки ↔ аннотации Grafana", systemImage: "pin.circle") }
                     Toggle(isOn: $foldDeps) { Label("Сворачивать зависимые проблемы", systemImage: "arrow.turn.down.right") }
@@ -218,7 +231,7 @@ struct SettingsView: View {
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 2.9").font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 3.0" + (SignInfo.expiry.map { " · подпись до " + ruDate($0) } ?? "")).font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }

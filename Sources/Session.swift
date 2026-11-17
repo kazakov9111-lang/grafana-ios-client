@@ -212,6 +212,10 @@ final class AppLock: ObservableObject {
         didSet { UserDefaults.standard.set(enabled, forKey: "faceid") }
     }
     @Published var locked: Bool
+    @Published var timeout: Int = UserDefaults.standard.integer(forKey: "lockTimeout") {
+        didSet { UserDefaults.standard.set(timeout, forKey: "lockTimeout") }
+    }
+    private var backgroundAt: Date?
 
     init() {
         let e = UserDefaults.standard.bool(forKey: "faceid")
@@ -219,7 +223,18 @@ final class AppLock: ObservableObject {
         locked = e
     }
 
-    func lockIfNeeded() { if enabled { locked = true } }
+    func lockIfNeeded() {
+        guard enabled else { return }
+        backgroundAt = Date()
+        if timeout == 0 { locked = true }
+    }
+
+    /// При возврате из фона: заблокировать, если прошло больше заданного времени.
+    func checkTimeout() {
+        guard enabled, let t = backgroundAt else { return }
+        if Date().timeIntervalSince(t) >= Double(timeout * 60) { locked = true }
+        backgroundAt = nil
+    }
 
     func unlock() async {
         guard locked else { return }

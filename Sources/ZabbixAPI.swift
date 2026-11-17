@@ -257,6 +257,9 @@ struct ProblemsView: View {
     @AppStorage("groupProblems") private var grouped = Launch.screen == "grouped"
     @AppStorage("foldDeps") private var foldDeps = true
     @State private var showShift = Launch.screen == "shift"
+    @State private var showMorning = Launch.screen == "morning"
+    @State private var showDuty = Launch.screen == "duty-roster"
+    @State private var rootCause: ProblemGroup?
     @State private var showMaint = Launch.screen == "maint"
     @State private var cachedAt: Date?
     private let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
@@ -346,6 +349,7 @@ struct ProblemsView: View {
                     Label("Проблем нет", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
                         .symbolEffect(.bounce, value: shown.isEmpty)
                 }
+                QueueBanner()
                 if let c = cachedAt {
                     Label("Нет связи — показаны данные от \(c.formatted(.dateTime.day().month().hour().minute().locale(Locale(identifier: "ru_RU"))))",
                           systemImage: "wifi.slash")
@@ -357,8 +361,12 @@ struct ProblemsView: View {
                             Section {
                                 ForEach(g) { p in row(p) }
                             } header: {
-                                Label("Одновременно · \(g.first!.clock.formatted(date: .omitted, time: .shortened)) · \(g.count)",
-                                      systemImage: "link")
+                                HStack {
+                                    Label("Одновременно · \(g.first!.clock.formatted(date: .omitted, time: .shortened)) · \(g.count)",
+                                          systemImage: "link")
+                                    Spacer()
+                                    Button("Почему?") { rootCause = ProblemGroup(id: g.first!.id, problems: g) }.font(.caption.weight(.semibold))
+                                }
                             }
                         } else {
                             ForEach(g) { p in row(p) }
@@ -404,7 +412,11 @@ struct ProblemsView: View {
                             try await session.acknowledge(eventId: p.id, message: "")
                             AppMetrics.ackDelay(p.clock)
                             Haptics.success(); await load()
-                        } catch { Haptics.error(); ackError = error.localizedDescription }
+                        } catch {
+                            if ActionQueue.isOffline(error) {
+                                ActionQueue.shared.add(QueuedAction(eventId: p.id, action: 6, title: p.name)); Haptics.tap()
+                            } else { Haptics.error(); ackError = error.localizedDescription }
+                        }
                     }
                 }
                 Button("Отмена", role: .cancel) {}
@@ -425,6 +437,9 @@ struct ProblemsView: View {
             .navigationDestination(isPresented: $showIncidents) { incidentsDest }
             .onChange(of: showIncidents) { v in if !v { openIncident = nil } }
             .sheet(isPresented: $showShift) { ShiftReportView() }
+            .sheet(isPresented: $showMorning) { MorningView() }
+            .sheet(isPresented: $showDuty) { DutyRosterView() }
+            .sheet(item: $rootCause) { g in RootCauseView(problems: g.problems) }
             .sheet(isPresented: $showMaint) { MaintenanceListView() }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -435,6 +450,8 @@ struct ProblemsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button { openIncident = nil; showIncidents = true } label: { Label("Аварии", systemImage: "flame") }
+                        Button { showMorning = true } label: { Label("Утренняя сводка", systemImage: "sunrise") }
+                        Button { showDuty = true } label: { Label("График дежурств", systemImage: "calendar.badge.clock") }
                         Button { showShift = true } label: { Label("Передача смены", systemImage: "person.2.badge.gearshape") }
                         Button { showMaint = true } label: { Label("Плановые работы", systemImage: "wrench.and.screwdriver") }
                         Toggle(isOn: $grouped) { Label("Группировать одновременные", systemImage: "link") }
@@ -457,6 +474,7 @@ struct ProblemsView: View {
     private func load() async {
         loading = true
         defer { loading = false }
+        await ActionQueue.shared.flush(session)
         do {
             let before = problems.count
             let fresh = try await session.loadProblems()
@@ -562,6 +580,7 @@ struct ProblemDetailView: View {
             if let c = detail?.comments, !c.isEmpty {
                 Section("Что делать") { Text(c).font(.subheadline) }
             }
+            RunbookSection(problem: problem)
             TriggerHelpSection(problem: problem)
             PastOccurrencesSection(problem: problem)
             if let items = detail?.items, !items.isEmpty {
@@ -590,7 +609,12 @@ struct ProblemDetailView: View {
         .navigationTitle("Проблема")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { ShareLink(item: shareText) }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    ShareLink(item: shareText) { Label("Текстом", systemImage: "text.alignleft") }
+                    Button { shareProblemImage(problem) } label: { Label("Карточкой (картинка)", systemImage: "photo") }
+                } label: { Image(systemName: "square.and.arrow.up") }
+            }
         }
         .sheet(isPresented: $showAck) {
             AckSheet(problem: problem) { acked = true }

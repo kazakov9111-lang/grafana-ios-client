@@ -113,9 +113,25 @@ jobs:
           WAIT=12 shot 77-wall --tab 4 --screen wall
           shot 78-chat --tab 0 --screen chat
           WAIT=14 shot 79-fcast --tab 4
+          shot 80-morning --tab 1 --screen morning
+          shot 81-duty --tab 1 --screen duty-roster
+          shot 82-queue --tab 1 --screen queue
+          shot 83-expiring --tab 2 --system expiring
+          shot 84-galerts --tab 2 --system galerts
+          shot 85-zmap --tab 2 --system zmap
+          shot 86-plan --tab 2 --system plan
+          shot 87-dashes --tab 4 --screen dashes
+          WAIT=14 shot 88-dash --tab 4 --screen dash
+          WAIT=12 shot 89-wall-night --tab 4 --screen wall-night
           mkdir -p shots/crash
           cp ~/Library/Logs/DiagnosticReports/Grafana* shots/crash/ 2>/dev/null || true
           ls shots/crash
+      - name: Юнит-тесты
+        continue-on-error: true
+        run: |
+          xcodebuild test -project Grafana.xcodeproj -scheme Grafana \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "Test Case|Executed|error:|TEST (SUCCEEDED|FAILED)" | tee shots/tests.txt
       - uses: actions/upload-artifact@v4
         with:
           name: shots
