@@ -159,7 +159,7 @@ enum GlobeScene {
         cam.name = "cam"
         cam.camera = SCNCamera()
         cam.camera?.fieldOfView = 40
-        cam.position = SCNVector3(0, 0, 3.4)
+        cam.position = SCNVector3(0, 0, 4.8)
         scene.rootNode.addChildNode(cam)
         let light = SCNNode()
         light.light = SCNLight()
@@ -865,6 +865,11 @@ struct ChatAskView: View {
             }
         }
         #endif
+        if reply == nil, ["серьёзн", "серьезн", "главн", "важн", "худш"].contains(where: { low.contains($0) }), let top = related.first {
+            reply = "Самое серьёзное: [\(sevName(top.severity))] \(top.name) — \(top.host), длится \(duration(seconds: Date().timeIntervalSince(top.clock)))."
+                + (related.count > 1 ? "
+Всего связанных проблем: \(related.count)." : "")
+        }
         if reply == nil {
             reply = MonitorContext.fallback(question: keys.joined(separator: " ") + " " + text, problems: probs, cpu: cpu, mem: mem, rtt: rtt)
         }
