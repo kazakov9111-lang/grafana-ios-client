@@ -867,8 +867,7 @@ struct ChatAskView: View {
         #endif
         if reply == nil, ["серьёзн", "серьезн", "главн", "важн", "худш"].contains(where: { low.contains($0) }), let top = related.first {
             reply = "Самое серьёзное: [\(sevName(top.severity))] \(top.name) — \(top.host), длится \(duration(seconds: Date().timeIntervalSince(top.clock)))."
-                + (related.count > 1 ? "
-Всего связанных проблем: \(related.count)." : "")
+                + (related.count > 1 ? "\nВсего связанных проблем: \(related.count)." : "")
         }
         if reply == nil {
             reply = MonitorContext.fallback(question: keys.joined(separator: " ") + " " + text, problems: probs, cpu: cpu, mem: mem, rtt: rtt)
