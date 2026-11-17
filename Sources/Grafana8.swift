@@ -32,7 +32,7 @@ struct CardBackground: ViewModifier {
         } else if glass && !snapshot {
             glassy(content)
         } else {
-            content.background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: radius))
+            content.background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: radius))
         }
     }
 
@@ -60,10 +60,13 @@ struct StateBackground: View {
         }
     }
 
+    @Environment(\.colorScheme) private var scheme
+    private var base: Color { scheme == .dark ? .black : Color(.systemGroupedBackground) }
+
     var body: some View {
         ZStack {
-            Color(white: 0.07)
-            mesh.opacity(0.55)
+            scheme == .dark ? Color(white: 0.07) : Color(.systemGroupedBackground)
+            mesh.opacity(scheme == .dark ? 0.55 : 0.25)
         }
         .ignoresSafeArea()
         .onAppear { withAnimation(.easeInOut(duration: 2.5)) { phase = true } }
@@ -78,12 +81,12 @@ struct StateBackground: View {
                 [0, 0.5], [0.5 + d, 0.45 - d], [1, 0.5],
                 [0, 1], [0.5, 1], [1, 1]
             ], colors: [
-                tint, .black, tint.opacity(0.6),
-                .black, tint.opacity(0.35), .black,
-                .black, .black, tint.opacity(0.3)
+                tint, base, tint.opacity(0.6),
+                base, tint.opacity(0.35), base,
+                base, base, tint.opacity(0.3)
             ])
         } else {
-            LinearGradient(colors: [tint, .black, .black], startPoint: phase ? .topLeading : .top, endPoint: .bottom)
+            LinearGradient(colors: [tint, base, base], startPoint: phase ? .topLeading : .top, endPoint: .bottom)
         }
     }
 }

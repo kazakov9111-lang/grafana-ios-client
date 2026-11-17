@@ -18,6 +18,7 @@ struct GrafanaApp: App {
                 RootView()
                 if lock.locked || phase != .active { cover }
             }
+            .modifier(ShakeReporter())
             .environmentObject(session)
             .environmentObject(lock)
             .environmentObject(router)
@@ -25,7 +26,6 @@ struct GrafanaApp: App {
             .environmentObject(chartSync)
             .environment(\.locale, Locale(identifier: "ru_RU"))
             .modifier(AppearanceMod())
-            .modifier(ShakeReporter())
             .onChange(of: phase) { newPhase in
                 if newPhase == .background { lock.lockIfNeeded(); Badge.schedule() }
                 if newPhase == .active { lock.checkTimeout(); Task { await lock.unlock(); await Watchdog.check(session) } }

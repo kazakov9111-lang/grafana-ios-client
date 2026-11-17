@@ -762,9 +762,9 @@ final class FavStore: ObservableObject {
         if let d = UserDefaults.standard.data(forKey: "favItems"), let v = try? JSONDecoder().decode([FavItem].self, from: d) {
             items = v
         } else if Launch.demo {
-            items = [FavItem(id: "10", name: "ICMP response time", host: "Moscow DC", units: "s"),
-                     FavItem(id: "20", name: "ICMP response time", host: "Moscow", units: "s"),
-                     FavItem(id: "40", name: "ICMP response time", host: "Kazan", units: "s")]
+            items = [FavItem(id: "10", name: "Загрузка CPU", host: "Moscow DC", units: "%"),
+                     FavItem(id: "20", name: "Загрузка CPU", host: "Moscow", units: "%"),
+                     FavItem(id: "40", name: "Загрузка CPU", host: "Kazan", units: "%")]
         } else { items = [] }
     }
 

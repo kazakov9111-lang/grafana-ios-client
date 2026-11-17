@@ -170,7 +170,7 @@ struct OverviewView: View {
                 Image(systemName: "chevron.right").foregroundStyle(.secondary)
             }
             .padding(12)
-            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
@@ -251,7 +251,7 @@ struct OverviewView: View {
                 Text("Чем ярче клетка, тем больше проблем началось в этот час.").font(.caption2).foregroundStyle(.secondary)
             }
             .padding(12)
-            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -288,7 +288,7 @@ struct OverviewView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(badN > 0 ? color.opacity(0.7) : .clear, lineWidth: 1))
     }
 
@@ -361,7 +361,7 @@ struct OverviewView: View {
                 }
             }
             .padding(12)
-            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -385,7 +385,7 @@ struct OverviewView: View {
                 }
             }
             .padding(12)
-            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -410,7 +410,7 @@ struct OverviewView: View {
             if let e = model.error { Text(e).font(.caption).foregroundStyle(.orange) }
         }
         .padding(12)
-        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

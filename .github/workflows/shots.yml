@@ -135,7 +135,7 @@ jobs:
           shot 99-light --tab 0 --theme light
           shot 100-light-problems --tab 1 --theme light
           WAIT=15 shot 101-dash-vars --tab 4 --screen dash
-          shot 102-bug --tab 0 --screen bug
+          WAIT=12 shot 102-bug --tab 0 --screen bug
           shot 103-settings --tab 3
           mkdir -p shots/crash
           cp ~/Library/Logs/DiagnosticReports/Grafana* shots/crash/ 2>/dev/null || true

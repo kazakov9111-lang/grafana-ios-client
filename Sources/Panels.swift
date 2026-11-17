@@ -498,7 +498,7 @@ struct PanelsView: View {
             Button { editMine = true } label: {
                 Label("Добавить свою панель: любой показатель любого хоста", systemImage: "plus.circle")
                     .frame(maxWidth: .infinity).padding(14)
-                    .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 10))
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
             }
         } else {
             ForEach(customStore.items) { CustomPanelView(panel: $0, seconds: model.windowSeconds, end: model.windowEnd) }

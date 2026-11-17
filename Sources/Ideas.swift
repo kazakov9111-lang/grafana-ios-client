@@ -92,7 +92,7 @@ struct CompareView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
-                .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 10))
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
 
                 PanelCard(title: metrics[metric].0, subtitle: range.label) {
                     if series.isEmpty {
@@ -307,7 +307,7 @@ struct DutyView: View {
                             Text(["Чрезвыч.", "Высокая", "Средняя"][5 - s]).font(.caption).foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity).padding(.vertical, 8)
-                        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(n == 0 ? Color.clear : sevColor(s).opacity(0.6)))
                     }
                 }
@@ -335,7 +335,7 @@ struct DutyView: View {
                                 }
                             }
                             .padding(10)
-                            .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 10))
+                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
                             .opacity(p.acked ? 0.55 : 1)
                         }
                     }
@@ -365,6 +365,6 @@ struct DutyView: View {
             }.frame(width: 40, height: 40)
         }
         .padding(12).frame(maxWidth: .infinity)
-        .background(Color(white: 0.11), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }
