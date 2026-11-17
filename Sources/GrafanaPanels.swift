@@ -236,9 +236,7 @@ struct HistogramPanel: View {
             let lo = fixedRange?.lowerBound ?? 0
             let hi = fixedRange?.upperBound ?? max((v.max() ?? 1) * 1.001, lo + 1)
             let w = (hi - lo) / Double(bins)
-            var counts = [Int](repeating: 0, count: bins)
-            for x in v { counts[min(bins - 1, max(0, Int((x - lo) / w)))] += 1 }
-            let items = counts.enumerated().map { Bin(id: $0.offset, label: String(format: "%.0f", lo + Double($0.offset) * w), n: $0.element) }
+            let items = makeBins(v, lo: lo, width: w)
             let sorted = v.sorted()
             let med = sorted[sorted.count / 2], p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
             PanelCard(title: title, subtitle: subtitle) {
@@ -268,6 +266,12 @@ struct HistogramPanel: View {
                 }
             }
         }
+    }
+
+    private func makeBins(_ v: [Double], lo: Double, width w: Double) -> [Bin] {
+        var counts = [Int](repeating: 0, count: bins)
+        for x in v { counts[min(bins - 1, max(0, Int((x - lo) / w)))] += 1 }
+        return counts.enumerated().map { Bin(id: $0.offset, label: String(format: "%.0f", lo + Double($0.offset) * w), n: $0.element) }
     }
 
     private func stat(_ t: String, _ v: String) -> some View {
