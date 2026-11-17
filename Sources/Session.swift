@@ -174,7 +174,10 @@ final class Session: ObservableObject {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = try JSONEncoder().encode(body)
         }
-        let (data, resp) = try await urlSession.data(for: req)
+        let t0 = Date()
+        let data: Data, resp: URLResponse
+        do { (data, resp) = try await urlSession.data(for: req) }
+        catch { AppHealth.shared.fail(error.localizedDescription); throw error }
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401, retry, let pw = savedPassword {
             try await login(user: user, password: pw)
