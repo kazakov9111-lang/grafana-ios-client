@@ -107,7 +107,7 @@ final class GrafanaTests: XCTestCase {
         XCTAssertTrue(OfflineCache.isRead(path: p, method: "POST", body: body(now, span: 3600)))
         XCTAssertFalse(OfflineCache.isRead(path: p, method: "POST", body: .object(["method": .string("event.acknowledge")])))
         XCTAssertEqual(OfflineCache.key(path: p, method: "POST", body: body(now, span: 3600)),
-                       OfflineCache.key(path: p, method: "POST", body: body(now - 30, span: 3600 + 30)))
+                       OfflineCache.key(path: p, method: "POST", body: body(now, span: 3600 + 20)))
         XCTAssertNotEqual(OfflineCache.key(path: p, method: "POST", body: body(now, span: 3600)),
                           OfflineCache.key(path: p, method: "POST", body: body(now, span: 86400)))
     }

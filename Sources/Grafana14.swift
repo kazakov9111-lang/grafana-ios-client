@@ -1145,17 +1145,26 @@ struct ZWidgetView: View {
             single = (r[0]["name"].string ?? "", v.map { formatValue($0, unit: r[0]["units"].string) } ?? (r[0]["lastvalue"].string ?? "—"))
         case "plaintext", "piechart", "itemnavigator", "dataover":
             let ids = widget.values(containing: "itemid")
-            var p: [String: JSON] = ["output": .array(["name", "lastvalue", "units"].map { .string($0) }), "limit": .number(20)]
+            var p: [String: JSON] = ["output": .array(["name", "lastvalue", "units", "hostid"].map { .string($0) }), "limit": .number(20)]
             if !ids.isEmpty { p["itemids"] = .array(ids.map { .string($0) }) }
             else if let ip = widget.values(containing: "items").first {
                 p["search"] = .object(["name": .string(ip)]); p["searchWildcardsEnabled"] = .bool(true); p["monitored"] = .bool(true)
             } else { rows = []; return }
             let r = (try? await session.zabbixResult("item.get", p))?.array ?? []
             let raw = widget.type == "piechart"
-            rows = r.map { i in
+            let hr = (try? await session.zabbixResult("host.get", ["output": .array([.string("hostid"), .string("name")]),
+                                                                   "hostids": .array(r.compactMap { $0["hostid"].string }.map { .string($0) })]))?.array ?? []
+            var hostName: [String: String] = [:]
+            for h in hr { if let id = h["hostid"].string { hostName[id] = h["name"].string } }
+            var out: [(String, String)] = []
+            for i in r {
                 let v = i["lastvalue"].double
-                return (i["name"].string ?? "", raw ? (i["lastvalue"].string ?? "") : (v.map { formatValue($0, unit: i["units"].string) } ?? (i["lastvalue"].string ?? "—")))
+                var label = i["name"].string ?? ""
+                if let hn = i["hostid"].string.flatMap({ hostName[$0] }) { label = shortName(hn) + ": " + label }
+                if out.contains(where: { $0.0 == label }) { label += " (\(out.count + 1))" }
+                out.append((label, raw ? (i["lastvalue"].string ?? "") : (v.map { formatValue($0, unit: i["units"].string) } ?? (i["lastvalue"].string ?? "—"))))
             }
+            rows = out
         case "systeminfo":
             let v = (try? await session.zabbixResult("apiinfo.version", [:]))?.string
             rows = [("Версия Zabbix", v ?? "—"), ("Хостов под наблюдением", "\(hosts.count)"),
