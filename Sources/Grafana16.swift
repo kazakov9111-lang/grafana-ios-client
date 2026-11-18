@@ -322,6 +322,10 @@ struct ConnectionCheckView: View {
                 return n == 0 ? (3, "Доступ есть, правил нет") : (2, "Правил: \(n)")
             })
         ]
+        list.append((ConnCheck(id: "widgets", title: "Виджеты (общая папка)", icon: "square.grid.2x2",
+                               hint: "Виджет на экран «Домой» получает данные через общую папку (App Group). Sideloadly её не даёт — ставьте приложение через AltStore."), {
+            SharedGroup.available ? (2, "Есть: \(SharedGroup.id)") : (3, "Нет: подпись не дала App Group")
+        }))
         if ZabbixDirect.config != nil {
             list.append((ConnCheck(id: "token", title: "Токен Zabbix (напрямую)", icon: "key", hint: "Проверьте адрес Zabbix и срок действия токена в Настройках."), {
                 let r = try await session.zabbixAny("hostgroup.get", .object(["output": .array([.string("groupid")]), "editable": .bool(true)]))

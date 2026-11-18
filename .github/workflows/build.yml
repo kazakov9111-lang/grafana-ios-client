@@ -15,8 +15,15 @@ jobs:
           xcodebuild -project Grafana.xcodeproj -scheme Grafana -sdk iphoneos \
             -configuration Release -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          # Права App Group внутри сборки: AltStore по ним регистрирует общую папку для виджета.
+          APP=build/Build/Products/Release-iphoneos/Grafana.app
+          /usr/libexec/PlistBuddy -c "Add :com.apple.security.application-groups array" \
+            -c "Add :com.apple.security.application-groups:0 string group.com.personal.grafana" ent.plist
+          codesign -f -s - --entitlements ent.plist "$APP/PlugIns/GrafanaWidgets.appex"
+          codesign -f -s - --entitlements ent.plist "$APP"
+          codesign -d --entitlements - "$APP"
           mkdir Payload
-          cp -R build/Build/Products/Release-iphoneos/Grafana.app Payload/
+          cp -R "$APP" Payload/
           zip -r Grafana.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
