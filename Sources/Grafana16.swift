@@ -130,6 +130,15 @@ struct OfflineBanner: View {
 
 // MARK: Снимок для виджетов и Spotlight
 
+/// Данные для виджетов при запуске и каждом возврате в приложение (не только на вкладке «Проблемы»).
+@MainActor func refreshWidgets() async {
+    guard let s = Badge.session else { return }
+    var n = 0
+    while s.restoring && n < 150 { try? await Task.sleep(nanoseconds: 100_000_000); n += 1 }
+    guard s.loggedIn, let ps = try? await s.loadProblems() else { return }
+    AppSnapshot.publish(ps)
+}
+
 enum AppSnapshot {
     @MainActor static func publish(_ all: [Problem]) {
         let ps = ProblemFilters.visible(all)
@@ -312,6 +321,10 @@ struct ConnectionCheckView: View {
                 return n == 0 ? (3, "Доступ есть, правил нет") : (2, "Правил: \(n)")
             })
         ]
+        list.append((ConnCheck(id: "widgets", title: "Виджеты (общая папка)", icon: "square.grid.2x2",
+                               hint: "Без общей папки (App Group) виджеты не видят данные приложения. Её даёт подпись Sideloadly; в обычной сборке её и не должно быть."), {
+            SharedGroup.available ? (2, "Есть: \(SharedGroup.id)") : (3, "Нет: подпись не дала App Group «\(SharedGroup.id)»")
+        }))
         if ZabbixDirect.config != nil {
             list.append((ConnCheck(id: "token", title: "Токен Zabbix (напрямую)", icon: "key", hint: "Проверьте адрес Zabbix и срок действия токена в Настройках."), {
                 let r = try await session.zabbixAny("hostgroup.get", .object(["output": .array([.string("groupid")]), "editable": .bool(true)]))

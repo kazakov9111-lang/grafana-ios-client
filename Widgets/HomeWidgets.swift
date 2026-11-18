@@ -54,8 +54,11 @@ struct ProblemsHomeView: View {
             content(s).widgetURL(URL(string: "grafanaapp://problems"))
         } else {
             VStack(spacing: 6) {
-                Image(systemName: "arrow.clockwise.circle").font(.title2)
-                Text("Откройте приложение, чтобы виджет получил данные").font(.caption).multilineTextAlignment(.center)
+                Image(systemName: SharedGroup.available ? "arrow.clockwise.circle" : "folder.badge.questionmark").font(.title2)
+                Text(SharedGroup.available ? "Откройте приложение, чтобы виджет получил данные"
+                                           : "Нет общей папки с приложением (App Group) — подпись её не дала")
+                    .font(.caption).multilineTextAlignment(.center)
+                if family != .systemSmall { Text(SharedGroup.id).font(.system(size: 9)).foregroundStyle(.tertiary) }
             }
             .foregroundStyle(.secondary)
         }

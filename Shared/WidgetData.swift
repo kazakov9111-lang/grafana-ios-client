@@ -40,6 +40,9 @@ enum SharedGroup {
 
     static var defaults: UserDefaults? { UserDefaults(suiteName: id) }
 
+    /// true, только если подпись действительно дала доступ к общей папке.
+    static var available: Bool { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: id) != nil }
+
     static func save(_ s: WidgetSnapshot) {
         guard let d = try? JSONEncoder().encode(s) else { return }
         defaults?.set(d, forKey: "widgetSnapshot")

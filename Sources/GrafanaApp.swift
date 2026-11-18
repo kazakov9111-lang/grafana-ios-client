@@ -28,10 +28,11 @@ struct GrafanaApp: App {
             .modifier(AppearanceMod())
             .onChange(of: phase) { newPhase in
                 if newPhase == .background { lock.lockIfNeeded(); Badge.schedule() }
-                if newPhase == .active { lock.checkTimeout(); Task { await lock.unlock(); await Watchdog.check(session) } }
+                if newPhase == .active { lock.checkTimeout(); Task { await lock.unlock(); await Watchdog.check(session); await refreshWidgets() } }
             }
             .task {
                 Badge.session = session
+                Task { await refreshWidgets() }
                 if !Launch.demo { await Badge.requestAccess(); SignInfo.scheduleReminder() }
                 await lock.unlock()
             }
