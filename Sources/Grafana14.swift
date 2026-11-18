@@ -1060,14 +1060,12 @@ struct ZWidgetView: View {
                 }
             } else { ProgressView().frame(maxWidth: .infinity) }
         case "toptriggers":
-            let g = Dictionary(grouping: problems, by: \.name)
-                .map { (name: $0.key, n: $0.value.count, sev: $0.value.map(\.severity).max() ?? 3) }
-                .sorted { $0.n == $1.n ? $0.name < $1.name : $0.n > $1.n }
+            let g = topTriggers
             VStack(spacing: 4) {
-                ForEach(g.prefix(8), id: \.name) { t in
+                ForEach(g) { t in
                     HStack {
                         Circle().fill(sevColor(t.sev)).frame(width: 8, height: 8)
-                        Text(t.name).font(.caption).lineLimit(1)
+                        Text(t.id).font(.caption).lineLimit(1)
                         Spacer()
                         Text("\(t.n)").font(.caption.weight(.bold).monospacedDigit())
                     }
@@ -1085,6 +1083,14 @@ struct ZWidgetView: View {
     }
 
     private struct TopHost: Identifiable { let id: String; let n: Int; let sev: Int }
+
+    private var topTriggers: [TopHost] {
+        let g: [String: [Problem]] = Dictionary(grouping: problems, by: { $0.name })
+        var out: [TopHost] = []
+        for (k, v) in g { out.append(TopHost(id: k, n: v.count, sev: v.map { $0.severity }.max() ?? 3)) }
+        out.sort { a, b in a.n == b.n ? a.id < b.id : a.n > b.n }
+        return Array(out.prefix(8))
+    }
 
     private func rowsView(_ r: [(String, String)]) -> some View {
         VStack(spacing: 5) {
