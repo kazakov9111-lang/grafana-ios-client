@@ -502,6 +502,7 @@ final class DeepLink: ObservableObject {
     static let shared = DeepLink()
     @Published var host: HostMini?
     @Published var problem: ProblemRef?
+    @Published var tab: Int?
 
     static func url(_ h: HostMini) -> String {
         "grafanaapp://host/\(h.id)?name=" + (h.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? h.name)
@@ -511,6 +512,7 @@ final class DeepLink: ObservableObject {
         if url.scheme == "grafanaapp", url.host == "problem", let id = url.pathComponents.filter({ $0 != "/" }).first {
             problem = ProblemRef(id: id); return
         }
+        if url.scheme == "grafanaapp", url.host == "tab", let t = Int(url.lastPathComponent) { tab = t; return }
         guard url.scheme == "grafanaapp", url.host == "host" else { return }
         let id = url.pathComponents.filter { $0 != "/" }.first ?? ""
         let name = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "name" }?.value ?? id
@@ -520,6 +522,7 @@ final class DeepLink: ObservableObject {
     func openSpotlight(_ identifier: String) {
         let p = identifier.split(separator: "|", maxSplits: 2).map(String.init)
         if p.count == 3, p[0] == "host" { host = HostMini(id: p[1], name: p[2]) }
+        if p.count >= 2, p[0] == "problem" { problem = ProblemRef(id: p[1]) }
     }
 }
 
@@ -602,7 +605,7 @@ struct QRStickerSheet: View {
             ScrollView([.vertical, .horizontal]) {
                 if hosts.isEmpty { ProgressView().padding(40) } else { grid }
             }
-            .background(Color(white: 0.07))
+            .background(Color.appBG)
             .navigationTitle("QR-наклейки (\(hosts.count))")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

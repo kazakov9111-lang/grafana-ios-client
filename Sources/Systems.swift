@@ -575,7 +575,7 @@ struct HostDetailView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 8)
-                            .background(Color(white: 0.16), in: RoundedRectangle(cornerRadius: 10))
+                            .background(Color.appChip, in: RoundedRectangle(cornerRadius: 10))
                         }
                     }
                     .padding(.vertical, 4)

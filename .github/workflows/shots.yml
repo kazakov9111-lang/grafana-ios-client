@@ -137,6 +137,12 @@ jobs:
           WAIT=15 shot 101-dash-vars --tab 4 --screen dash
           WAIT=12 shot 102-bug --tab 0 --screen bug
           shot 103-settings --tab 3
+          WAIT=12 shot 104-conncheck --tab 3 --screen conncheck
+          shot 105-offline --tab 0 --screen offline
+          WAIT=12 shot 106-zdash-more --tab 2 --system zdash1 --zpage 2
+          shot 107-systems-light --tab 2 --theme light
+          shot 108-panels-light --tab 4 --theme light
+          shot 109-settings-light --tab 3 --theme light
           mkdir -p shots/crash
           cp ~/Library/Logs/DiagnosticReports/Grafana* shots/crash/ 2>/dev/null || true
           ls shots/crash

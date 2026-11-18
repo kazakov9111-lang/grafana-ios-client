@@ -376,6 +376,7 @@ struct InventoryView: View {
     @State private var loading = true
     @State private var q = ""
     @State private var byRack = false
+    @State private var imported: String?
 
     private var shown: [InvHost] {
         hosts.filter { q.isEmpty || [$0.name, $0.serial, $0.model, $0.location, $0.rack].contains { $0.localizedCaseInsensitiveContains(q) } }
@@ -421,6 +422,16 @@ struct InventoryView: View {
         }
         .searchable(text: $q, prompt: "Имя, серийный номер, модель, место")
         .navigationTitle("Инвентарь")
+        .toolbar {
+            if hosts.contains(where: { !$0.rack.isEmpty }) {
+                Button { let r = RackImport.run(hosts); imported = "Добавлено хостов: \(r.added), стоек: \(r.racks). Положение в юнитах примерное — поправьте его в разделе «Стойки»." } label: {
+                    Label("В «Стойки»", systemImage: "server.rack")
+                }
+            }
+        }
+        .alert("Стойки из инвентаря", isPresented: Binding(get: { imported != nil }, set: { if !$0 { imported = nil } })) {
+            Button("OK") { imported = nil }
+        } message: { Text(imported ?? "") }
         .task { await load() }
     }
 

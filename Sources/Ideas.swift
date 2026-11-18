@@ -113,7 +113,7 @@ struct CompareView: View {
             }
             .padding(12)
         }
-        .background(Color(white: 0.07))
+        .background(Color.appBG)
         .navigationTitle("Сравнение хостов")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $picking) { HostPicker(chosen: hosts) { hosts.append($0) } }
@@ -142,7 +142,7 @@ struct FlowChips: View {
                     Button { onRemove(n) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Color(white: 0.17), in: Capsule())
+                .background(Color.appChip, in: Capsule())
             }
         }
     }
@@ -222,7 +222,7 @@ struct VeeamCalendarView: View {
             }
             .padding(12)
         }
-        .background(Color(white: 0.07))
+        .background(Color.appBG)
         .navigationTitle("Календарь бэкапов")
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }

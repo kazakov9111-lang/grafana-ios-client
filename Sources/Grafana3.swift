@@ -498,7 +498,7 @@ struct SLAView: View {
             }
             .padding(12)
         }
-        .background(Color(white: 0.07))
+        .background(Color.appBG)
         .navigationTitle("Доступность (SLA)")
         .navigationBarTitleDisplayMode(.inline)
         .task { await model.load(session: session) }

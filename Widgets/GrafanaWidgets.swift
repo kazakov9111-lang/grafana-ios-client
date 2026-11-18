@@ -9,6 +9,9 @@ struct GrafanaWidgets: WidgetBundle {
     var body: some Widget {
         ProblemLiveActivity()
         if #available(iOS 18.0, *) { ProblemsControl() }
+        #if APPGROUP
+        ProblemsHomeWidget()
+        #endif
     }
 }
 

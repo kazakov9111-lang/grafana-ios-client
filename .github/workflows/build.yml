@@ -22,3 +22,25 @@ jobs:
         with:
           name: Grafana-ipa
           path: Grafana.ipa
+  widgets:
+    # Пробная сборка: виджеты на экран «Домой» через общую папку (App Group).
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Build с виджетами
+        run: |
+          xcodebuild -project Grafana.xcodeproj -scheme Grafana -sdk iphoneos             -configuration Release -derivedDataPath build             SWIFT_ACTIVE_COMPILATION_CONDITIONS=APPGROUP             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          APP=build/Build/Products/Release-iphoneos/Grafana.app
+          /usr/libexec/PlistBuddy -c "Add :com.apple.security.application-groups array"             -c "Add :com.apple.security.application-groups:0 string group.com.personal.grafana" ent.plist
+          codesign -f -s - --entitlements ent.plist "$APP/PlugIns/GrafanaWidgets.appex"
+          codesign -f -s - --entitlements ent.plist "$APP"
+          codesign -d --entitlements - "$APP"
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -r Grafana-widgets.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Grafana-widgets-ipa
+          path: Grafana-widgets.ipa

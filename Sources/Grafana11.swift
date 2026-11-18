@@ -251,7 +251,7 @@ struct RackView: View {
         ScrollView {
             if let i = idx { rack(store.racks[i]).padding() }
         }
-        .background(Color(white: 0.07))
+        .background(Color.appBG)
         .navigationTitle(idx.map { store.racks[$0].name } ?? "Стойка")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { Button { picking = true } label: { Image(systemName: "plus") } }
@@ -511,7 +511,7 @@ struct ARServerRoomView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(white: 0.07))
+                .background(Color.appBG)
             }
             VStack(spacing: 6) {
                 Text(seen.isEmpty ? "Наведите камеру на QR-наклейку сервера" : "Найдено: " + seen.joined(separator: ", "))

@@ -1173,7 +1173,7 @@ struct ZabbixMapView: View {
                 .frame(width: size.width * k, height: size.height * k)
             }
         }
-        .background(Color(white: 0.07))
+        .background(Color.appBG)
         .navigationTitle(ref.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

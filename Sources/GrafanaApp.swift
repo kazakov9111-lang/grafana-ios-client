@@ -10,7 +10,7 @@ struct GrafanaApp: App {
     @StateObject private var chartSync = ChartSync()
     @Environment(\.scenePhase) private var phase
 
-    init() { Badge.register(); NotifActions.register(); MetricsSink.start() }
+    init() { Badge.register(); NotifActions.register(); MetricsSink.start(); OfflineCache.prune() }
 
     var body: some Scene {
         WindowGroup {
@@ -97,7 +97,11 @@ struct MainTabs: View {
         .onOpenURL { url in
             if url.scheme == "grafanaapp", url.host == "problems" { router.tab = 1 } else { DeepLink.shared.open(url: url) }
         }
+        .onReceive(link.$tab) { t in if let t { router.tab = t; link.tab = nil } }
+        .overlay(alignment: .bottom) { OfflineBanner().padding(.bottom, 58) }
+        .animation(.easeInOut(duration: 0.25), value: OfflineState.shared.since)
         .task {
+            if Launch.screen == "offline" { OfflineState.shared.since = Date().addingTimeInterval(-2 * 3600 - 840) }
             await session.indexSpotlight()
             await session.syncAnnotations()
         }
@@ -160,6 +164,8 @@ struct SettingsView: View {
     @State private var showBranches = Launch.screen == "branches"
     @State private var showHealth = Launch.screen == "health"
     @State private var showQR = Launch.screen == "qr"
+    @State private var showCheck = Launch.screen == "conncheck"
+    @State private var cacheInfo = ""
     @State private var showScan = false
     @AppStorage("liveActivity") private var liveActivity = false
     @AppStorage("glassCards") private var glassCards = false
@@ -175,6 +181,11 @@ struct SettingsView: View {
                 Section("Подключение") {
                     LabeledContent("Сервер", value: session.baseURL).font(.footnote)
                     LabeledContent("Пользователь", value: session.user)
+                    NavigationLink { ConnectionCheckView() } label: { Label("Проверка подключения", systemImage: "stethoscope") }
+                    Button { OfflineCache.clear(); cacheInfo = OfflineCache.sizeText } label: {
+                        LabeledContent { Text(cacheInfo).font(.caption) } label: { Label("Очистить офлайн-кэш", systemImage: "internaldrive") }
+                    }
+                    .onAppear { cacheInfo = OfflineCache.sizeText }
                 }
                 Section {
                     TextField("Адрес Zabbix, например https://zabbix.company.ru", text: $zbxURL)
@@ -204,7 +215,7 @@ struct SettingsView: View {
                 Section {
                     AppearanceSettings()
                 } header: { Text("Вид") } footer: {
-                    Text("Светлая тема — новая: отдельные полноэкранные режимы (стена, NOC, AR) остаются тёмными. Встряхните телефон на любом экране, чтобы отправить отчёт об ошибке со снимком экрана.")
+                    Text("Полноэкранные режимы для телевизора (стена, NOC, AR) всегда тёмные. Встряхните телефон на любом экране, чтобы отправить отчёт об ошибке со снимком экрана.")
                 }
                 Section {
                     NavigationLink { SwipeSettingsView() } label: { Label("Свайпы и значок на иконке", systemImage: "hand.draw") }
@@ -233,7 +244,6 @@ struct SettingsView: View {
                 Section {
                     NavigationLink { QuietHoursView() } label: { Label("Тихие часы", systemImage: "moon.zzz") }
                     NavigationLink { ProfilesView() } label: { Label("Профили серверов", systemImage: "server.rack") }
-                    NavigationLink { NtfySetupView() } label: { Label("Мгновенные уведомления (ntfy)", systemImage: "bell.and.waves.left.and.right") }
                     Toggle(isOn: $annoToGrafana) { Label("Метки ↔ аннотации Grafana", systemImage: "pin.circle") }
                     Toggle(isOn: $foldDeps) { Label("Сворачивать зависимые проблемы", systemImage: "arrow.turn.down.right") }
                     Toggle(isOn: $pushMetrics) { Label("Метрики приложения в Zabbix", systemImage: "arrow.up.doc") }
@@ -243,11 +253,12 @@ struct SettingsView: View {
                 Section {
                     Button("Выйти", role: .destructive) { session.logout() }
                 }
-                Section { Text("Версия 3.1" + (SignInfo.expiry.map { " · подпись до " + ruDate($0) } ?? "")).font(.footnote).foregroundStyle(.secondary) }
+                Section { Text("Версия 3.2" + (SignInfo.expiry.map { " · подпись до " + ruDate($0) } ?? "")).font(.footnote).foregroundStyle(.secondary) }
             }
             .navigationTitle("Настройки")
             .navigationDestination(isPresented: $showBranches) { BranchEditorView() }
             .navigationDestination(isPresented: $showHealth) { HealthView() }
+            .navigationDestination(isPresented: $showCheck) { ConnectionCheckView() }
             .sheet(isPresented: $showQR) { QRStickerSheet() }
             .fullScreenCover(isPresented: $showScan) { QRScanSheet() }
             .onChange(of: liveActivity) { on in

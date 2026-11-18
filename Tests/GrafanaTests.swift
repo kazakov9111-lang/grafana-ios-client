@@ -98,4 +98,28 @@ final class GrafanaTests: XCTestCase {
         XCTAssertTrue(QuietHours.isQuiet(cal.date(bySettingHour: 2, minute: 0, second: 0, of: Date())!))
         XCTAssertFalse(QuietHours.isQuiet(cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date())!))
     }
+    func testOfflineCacheKeyIgnoresNow() {
+        let now = Date().timeIntervalSince1970
+        func body(_ t: Double, span: Double) -> JSON {
+            .object(["method": .string("history.get"), "params": .object(["time_from": .number(t - span), "itemids": .array([.string("1")])])])
+        }
+        let p = "/api/datasources/uid/x/resources/zabbix-api"
+        XCTAssertTrue(OfflineCache.isRead(path: p, method: "POST", body: body(now, span: 3600)))
+        XCTAssertFalse(OfflineCache.isRead(path: p, method: "POST", body: .object(["method": .string("event.acknowledge")])))
+        XCTAssertEqual(OfflineCache.key(path: p, method: "POST", body: body(now, span: 3600)),
+                       OfflineCache.key(path: p, method: "POST", body: body(now - 30, span: 3600 + 30)))
+        XCTAssertNotEqual(OfflineCache.key(path: p, method: "POST", body: body(now, span: 3600)),
+                          OfflineCache.key(path: p, method: "POST", body: body(now, span: 86400)))
+    }
+
+    func testRackImportStacksHosts() {
+        let saved = RackStore.shared.racks
+        defer { RackStore.shared.racks = saved }
+        RackStore.shared.racks = []
+        let h = { (n: String) in InvHost(id: n, name: n, serial: "", model: "", vendor: "", location: "", rack: "R1", lat: nil, lon: nil) }
+        let r = RackImport.run([h("A"), h("B")])
+        XCTAssertEqual(r.added, 2)
+        XCTAssertEqual(RackStore.shared.racks.first?.slots.map(\.u), [42, 41])
+        XCTAssertEqual(RackImport.run([h("A")]).added, 0)
+    }
 }

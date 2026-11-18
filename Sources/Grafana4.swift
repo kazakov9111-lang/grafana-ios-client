@@ -272,7 +272,7 @@ struct CarouselView<Page: View>: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(white: 0.07).ignoresSafeArea()
+            Color.appBG.ignoresSafeArea()
             TabView(selection: $index) {
                 ForEach(Array(ids.enumerated()), id: \.offset) { i, id in
                     ScrollView { page(id).padding(.horizontal, 12).padding(.top, 54).padding(.bottom, 30) }.tag(i)
@@ -404,7 +404,7 @@ struct ReportSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("Итог недели для руководителя (необязательно)", text: $comment, axis: .vertical)
                             .lineLimit(1...4).padding(10)
-                            .background(Color(white: 0.14), in: RoundedRectangle(cornerRadius: 8))
+                            .background(Color.appChip, in: RoundedRectangle(cornerRadius: 8))
                         Toggle("Светлая тема (для печати)", isOn: $light).font(.subheadline)
                     }
                     .padding(12)
@@ -417,7 +417,7 @@ struct ReportSheet: View {
                     }
                 }
             }
-            .background(Color(white: 0.07))
+            .background(Color.appBG)
             .navigationTitle("Отчёт за неделю")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -541,5 +541,17 @@ struct GrafanaShortcuts: AppShortcutsProvider {
                     phrases: ["Сводка \(.applicationName)", "Сводка мониторинга в \(.applicationName)",
                               "Monitoring summary in \(.applicationName)"],
                     shortTitle: "Сводка", systemImageName: "waveform")
+        AppShortcut(intent: OpenScreenIntent(),
+                    phrases: ["Открой \(\.$screen) в \(.applicationName)", "Покажи \(\.$screen) в \(.applicationName)",
+                              "Open \(\.$screen) in \(.applicationName)"],
+                    shortTitle: "Открыть экран", systemImageName: "rectangle.portrait.on.rectangle.portrait")
+        AppShortcut(intent: AckLatestIntent(),
+                    phrases: ["Подтверди последнюю проблему в \(.applicationName)", "Подтвердить проблему в \(.applicationName)",
+                              "Acknowledge last problem in \(.applicationName)"],
+                    shortTitle: "Подтвердить последнюю", systemImageName: "checkmark.bubble")
+        AppShortcut(intent: HostStatusIntent(),
+                    phrases: ["Состояние хоста в \(.applicationName)", "Как дела у сервера в \(.applicationName)",
+                              "Host status in \(.applicationName)"],
+                    shortTitle: "Состояние хоста", systemImageName: "server.rack")
     }
 }

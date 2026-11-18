@@ -175,9 +175,17 @@ final class Session: ObservableObject {
             req.httpBody = try JSONEncoder().encode(body)
         }
         let t0 = Date()
+        let cacheKey = OfflineCache.isRead(path: path, method: method, body: body) ? OfflineCache.key(path: path, method: method, body: body) : nil
         let data: Data, resp: URLResponse
         do { (data, resp) = try await urlSession.data(for: req) }
-        catch { AppHealth.shared.fail(error.localizedDescription); throw error }
+        catch {
+            AppHealth.shared.fail(error.localizedDescription)
+            if error is URLError, let k = cacheKey, let c = OfflineCache.load(k) {
+                OfflineState.shared.served(c.at)
+                return c.json
+            }
+            throw error
+        }
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if code == 401, retry, let pw = savedPassword {
             try await login(user: user, password: pw)
@@ -191,6 +199,8 @@ final class Session: ObservableObject {
             throw APIError(message: msg ?? "Ошибка сервера (HTTP \(code))")
         }
         AppHealth.shared.ok(ms: Int(Date().timeIntervalSince(t0) * 1000))
+        OfflineState.shared.online()
+        if let k = cacheKey, !json.isNull, json["error"].isNull { OfflineCache.save(k, data) }
         return json
     }
 

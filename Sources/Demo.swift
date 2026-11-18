@@ -141,6 +141,8 @@ enum Demo {
                                     "type": .string("alexanderzobnin-zabbix-datasource"), "isDefault": .bool(true)])])
         }
         if path == "/api/ds/query" { return query(body ?? .null) }
+        if path == "/api/health" { return .object(["version": .string("12.1.0"), "database": .string("ok")]) }
+        if path == "/api/user" { return .object(["login": .string("demo"), "isGrafanaAdmin": .bool(false)]) }
         return .null
     }
 
@@ -303,6 +305,8 @@ enum Demo {
                 }
             }
             return res(out)
+        case "apiinfo.version":
+            return .object(["result": .string("7.4.2")])
         default:
             return res([])
         }

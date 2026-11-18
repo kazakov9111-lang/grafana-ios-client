@@ -368,12 +368,12 @@ struct PanelsView: View {
                     }
                     .font(.subheadline)
                     .padding(.horizontal, 12).padding(.vertical, 7)
-                    .background(Color(white: 0.14), in: Capsule())
+                    .background(Color.appChip, in: Capsule())
                 }
                 Spacer()
                 Button { rangeSheet = true } label: {
                     Image(systemName: "calendar").foregroundStyle(model.customRange == nil ? Color.secondary : Color.orange)
-                        .padding(8).background(Color(white: 0.14), in: Circle())
+                        .padding(8).background(Color.appChip, in: Circle())
                 }
                 Menu {
                     Picker("Обновление", selection: $refreshSec) {
@@ -386,7 +386,7 @@ struct PanelsView: View {
                         if refreshSec > 0 { Text(refreshSec >= 60 ? "\(refreshSec / 60)м" : "\(refreshSec)с").font(.caption.monospacedDigit()) }
                     }
                     .foregroundStyle(refreshSec > 0 ? Color.green : Color.secondary)
-                    .padding(.horizontal, 10).padding(.vertical, 8).background(Color(white: 0.14), in: Capsule())
+                    .padding(.horizontal, 10).padding(.vertical, 8).background(Color.appChip, in: Capsule())
                 }
                 Menu {
                     Picker("Вид", selection: $chartStyle) {
@@ -397,7 +397,7 @@ struct PanelsView: View {
                     Toggle("Листать график пальцем", isOn: $chartScroll)
                 } label: {
                     Image(systemName: "waveform.path.ecg").foregroundStyle(.secondary)
-                        .padding(8).background(Color(white: 0.14), in: Circle())
+                        .padding(8).background(Color.appChip, in: Circle())
                 }
             }
             if model.customRange != nil {
@@ -438,7 +438,7 @@ struct PanelsView: View {
                 }
                 .padding(12)
             }
-            .background(Color(white: 0.07))
+            .background(Color.appBG)
             .navigationTitle("Панели")
             .navigationDestination(for: HostMini.self) { HostExplorerView(host: $0) }
             .navigationDestination(for: String.self) { id in if id == "sla" { SLAView() } else if id == "zdash" { ZabbixDashListView() } }

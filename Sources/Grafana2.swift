@@ -113,7 +113,7 @@ struct PanelFullScreen<Content: View>: View {
             .padding(.horizontal, 14)
             .padding(.top, 8)
         }
-        .background(Color(white: 0.07).ignoresSafeArea())
+        .background(Color.appBG.ignoresSafeArea())
         .environmentObject(sync)
         .preferredColorScheme(.dark)
     }

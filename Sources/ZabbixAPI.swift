@@ -530,6 +530,7 @@ struct ProblemsView: View {
             LiveStatus.update(problems: fresh)
             cachedAt = nil
             ProblemCache.save(fresh)
+            AppSnapshot.publish(fresh)
             filters.sync(fresh)
             Badge.set(Badge.count(fresh))
             Notifier.remember(fresh)

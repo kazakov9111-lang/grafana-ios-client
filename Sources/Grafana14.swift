@@ -900,7 +900,7 @@ struct ZabbixDashView: View {
     @EnvironmentObject var session: Session
     let ref: ZDashRef
     @State private var pages: [(String, [ZWidget])] = []
-    @State private var page = 0
+    @State private var page = Launch.value("--zpage").flatMap(Int.init) ?? 0
     @State private var hours = 6.0
     @State private var zoom: ClosedRange<Date>?
     @State private var problems: [Problem] = []
@@ -975,12 +975,15 @@ struct ZWidgetView: View {
     let onZoom: (ClosedRange<Date>) -> Void
     @State private var series: [Series]?
     @State private var single: (String, String)?
+    @State private var rows: [(String, String)]?
 
     private static let titles: [String: String] = [
         "svggraph": "График", "graph": "График (классический)", "problems": "Проблемы", "problemsbysv": "Проблемы по важности",
         "tophosts": "Топ хостов", "honeycomb": "Соты", "clock": "Часы", "item": "Значение", "itemhistory": "История значений",
         "hostavail": "Доступность хостов", "systeminfo": "Система", "geomap": "Геокарта", "map": "Карта", "url": "Ссылка",
-        "plaintext": "Текст", "gauge": "Шкала", "piechart": "Круговая", "trigover": "Обзор триггеров", "web": "Веб-мониторинг"
+        "plaintext": "Текст", "gauge": "Шкала", "piechart": "Круговая", "trigover": "Обзор триггеров", "web": "Веб-мониторинг",
+        "toptriggers": "Топ триггеров", "problemhosts": "Проблемы по хостам", "slareport": "Отчёт SLA", "actionlog": "Журнал действий",
+        "itemnavigator": "Элементы", "hostnavigator": "Хосты", "dataover": "Обзор данных"
     ]
 
     var body: some View {
@@ -1022,7 +1025,7 @@ struct ZWidgetView: View {
                 ForEach(problems.sorted { ($0.severity, $0.clock) > ($1.severity, $1.clock) }.prefix(8)) { ProblemRow(p: $0) }
                 if problems.isEmpty { Label("Проблем нет", systemImage: "checkmark.seal.fill").foregroundStyle(.green) }
             }
-        case "tophosts", "hostavail":
+        case "tophosts", "hostavail", "problemhosts", "hostnavigator":
             let top = topHosts
             VStack(spacing: 4) {
                 ForEach(top) { h in
@@ -1042,6 +1045,39 @@ struct ZWidgetView: View {
                 Text(ctx.date.formatted(date: .omitted, time: .standard)).font(.system(size: 40, weight: .light).monospacedDigit())
                     .frame(maxWidth: .infinity)
             }
+        case "plaintext", "itemnavigator", "dataover", "systeminfo", "web", "slareport", "actionlog":
+            if let rows { rowsView(rows) } else { ProgressView().frame(maxWidth: .infinity) }
+        case "piechart":
+            if let rows {
+                let vals = rows.compactMap { r in Double(r.1).map { (r.0, $0) } }.filter { $0.1 > 0 }
+                if vals.isEmpty { Text("Нет числовых значений").font(.caption).foregroundStyle(.secondary) }
+                else {
+                    Chart(vals.indices, id: \.self) { i in
+                        SectorMark(angle: .value("Значение", vals[i].1), innerRadius: .ratio(0.55), angularInset: 1.5)
+                            .foregroundStyle(by: .value("Элемент", vals[i].0))
+                    }
+                    .frame(height: 190)
+                }
+            } else { ProgressView().frame(maxWidth: .infinity) }
+        case "toptriggers":
+            let g = Dictionary(grouping: problems, by: \.name)
+                .map { (name: $0.key, n: $0.value.count, sev: $0.value.map(\.severity).max() ?? 3) }
+                .sorted { $0.n == $1.n ? $0.name < $1.name : $0.n > $1.n }
+            VStack(spacing: 4) {
+                ForEach(g.prefix(8), id: \.name) { t in
+                    HStack {
+                        Circle().fill(sevColor(t.sev)).frame(width: 8, height: 8)
+                        Text(t.name).font(.caption).lineLimit(1)
+                        Spacer()
+                        Text("\(t.n)").font(.caption.weight(.bold).monospacedDigit())
+                    }
+                }
+                if g.isEmpty { Text("Активных триггеров нет").font(.caption).foregroundStyle(.secondary) }
+            }
+        case "url":
+            if let u = widget.values(containing: "url").first, let url = URL(string: u) {
+                Link(destination: url) { Label("Открыть ссылку", systemImage: "safari") }
+            } else { Text("Ссылка не задана").font(.caption).foregroundStyle(.secondary) }
         default:
             Text("Этот виджет («\(widget.type)») пока не рисуется в приложении — откройте дашборд в браузере.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -1049,6 +1085,19 @@ struct ZWidgetView: View {
     }
 
     private struct TopHost: Identifiable { let id: String; let n: Int; let sev: Int }
+
+    private func rowsView(_ r: [(String, String)]) -> some View {
+        VStack(spacing: 5) {
+            ForEach(r.indices, id: \.self) { i in
+                HStack(alignment: .firstTextBaseline) {
+                    Text(r[i].0).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                    Spacer(minLength: 8)
+                    Text(r[i].1).font(.subheadline.weight(.semibold).monospacedDigit()).lineLimit(1)
+                }
+            }
+            if r.isEmpty { Text("Нет данных").font(.caption).foregroundStyle(.secondary) }
+        }
+    }
 
     private var topHosts: [TopHost] {
         let g = Dictionary(grouping: problems.filter { !$0.host.isEmpty }, by: \.host)
@@ -1088,6 +1137,42 @@ struct ZWidgetView: View {
             }
             let v = r[0]["lastvalue"].double
             single = (r[0]["name"].string ?? "", v.map { formatValue($0, unit: r[0]["units"].string) } ?? (r[0]["lastvalue"].string ?? "—"))
+        case "plaintext", "piechart", "itemnavigator", "dataover":
+            let ids = widget.values(containing: "itemid")
+            var p: [String: JSON] = ["output": .array(["name", "lastvalue", "units"].map { .string($0) }), "limit": .number(20)]
+            if !ids.isEmpty { p["itemids"] = .array(ids.map { .string($0) }) }
+            else if let ip = widget.values(containing: "items").first {
+                p["search"] = .object(["name": .string(ip)]); p["searchWildcardsEnabled"] = .bool(true); p["monitored"] = .bool(true)
+            } else { rows = []; return }
+            let r = (try? await session.zabbixResult("item.get", p))?.array ?? []
+            let raw = widget.type == "piechart"
+            rows = r.map { i in
+                let v = i["lastvalue"].double
+                return (i["name"].string ?? "", raw ? (i["lastvalue"].string ?? "") : (v.map { formatValue($0, unit: i["units"].string) } ?? (i["lastvalue"].string ?? "—")))
+            }
+        case "systeminfo":
+            let v = (try? await session.zabbixResult("apiinfo.version", [:]))?.string
+            rows = [("Версия Zabbix", v ?? "—"), ("Хостов под наблюдением", "\(hosts.count)"),
+                    ("Активных проблем", "\(problems.count)"), ("Неподтверждённых", "\(problems.filter { !$0.acked }.count)")]
+        case "web":
+            let r = (try? await session.zabbixResult("item.get", ["output": .array(["name", "lastvalue"].map { .string($0) }),
+                                                                  "search": .object(["key_": .string("web.test.fail")]), "monitored": .bool(true)]))?.array ?? []
+            let bad = r.filter { ($0["lastvalue"].double ?? 0) > 0 }.count
+            rows = [("Веб-сценариев", "\(r.count)"), ("С ошибкой", "\(bad)"), ("Работают", "\(r.count - bad)")]
+        case "slareport":
+            var p: [String: JSON] = ["output": .array(["name", "slo"].map { .string($0) })]
+            let ids = widget.values(containing: "slaid")
+            if !ids.isEmpty { p["slaids"] = .array(ids.map { .string($0) }) }
+            let r = (try? await session.zabbixResult("sla.get", p))?.array ?? []
+            rows = r.map { ($0["name"].string ?? "", "цель " + ($0["slo"].string ?? "?") + "%") }
+        case "actionlog":
+            let r = (try? await session.zabbixResult("alert.get", ["output": .array(["clock", "subject", "status"].map { .string($0) }),
+                                                                   "sortfield": .string("clock"), "sortorder": .string("DESC"), "limit": .number(8)]))?.array ?? []
+            rows = r.map { a in
+                let d = Date(timeIntervalSince1970: a["clock"].double ?? 0)
+                let subj = a["subject"].string ?? ""
+                return (subj.isEmpty ? "Уведомление" : subj, (a["status"].int == 2 ? "не дошло · " : "") + d.formatted(date: .omitted, time: .shortened))
+            }
         default:
             break
         }
@@ -1124,6 +1209,15 @@ enum ZDemo {
             ZWidget(id: "w3", type: "honeycomb", name: "Хосты", x: 0, y: 2, fields: [:]),
             ZWidget(id: "w4", type: "tophosts", name: "Больше всего проблем", x: 0, y: 3, fields: [:]),
             ZWidget(id: "w5", type: "item", name: "", x: 0, y: 4, fields: ["itemid.0": [ids.first ?? "10"]])
-        ]), ("Проблемы", [ZWidget(id: "w6", type: "problems", name: "", x: 0, y: 0, fields: [:])])]
+        ]), ("Проблемы", [ZWidget(id: "w6", type: "problems", name: "", x: 0, y: 0, fields: [:])]),
+        ("Ещё", [
+            ZWidget(id: "w7", type: "systeminfo", name: "", x: 0, y: 0, fields: [:]),
+            ZWidget(id: "w8", type: "toptriggers", name: "", x: 0, y: 1, fields: [:]),
+            ZWidget(id: "w9", type: "piechart", name: "Задержка по филиалам", x: 0, y: 2,
+                    fields: Dictionary(uniqueKeysWithValues: ids.enumerated().map { ("ds.0.itemids.\($0.offset)", [$0.element]) })),
+            ZWidget(id: "w10", type: "plaintext", name: "Последние значения", x: 0, y: 3,
+                    fields: Dictionary(uniqueKeysWithValues: ids.enumerated().map { ("itemids.\($0.offset)", [$0.element]) })),
+            ZWidget(id: "w11", type: "url", name: "Документация", x: 0, y: 4, fields: ["url": ["https://www.zabbix.com/documentation"]])
+        ])]
     }
 }

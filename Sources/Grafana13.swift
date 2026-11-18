@@ -96,7 +96,7 @@ struct FloorPlanView: View {
             Text(editing ? "Коснитесь места на плане, чтобы поставить хост. Удерживайте точку — удалить." : "Цвет точки — состояние хоста в Zabbix.")
                 .font(.footnote).foregroundStyle(.secondary).padding()
         }
-        .background(Color(white: 0.07))
+        .background(Color.appBG)
         .navigationTitle(idx.map { store.plans[$0].name } ?? "План")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
