@@ -138,6 +138,52 @@ struct OfflineBanner: View {
     while s.restoring && n < 150 { try? await Task.sleep(nanoseconds: 100_000_000); n += 1 }
     guard s.loggedIn, let ps = try? await s.loadProblems() else { return }
     AppSnapshot.publish(ps)
+    await WidgetCharts.publishFavorites(s)
+}
+
+/// Графики для виджета «Графики»: избранные метрики + средние с «Обзора».
+enum WidgetCharts {
+    private static func points(_ pts: [Pt], scale: Double = 1) -> [WidgetPoint] {
+        let step = max(1, pts.count / 48)
+        return stride(from: 0, to: pts.count, by: step).map { WidgetPoint(t: pts[$0].t, v: pts[$0].v * scale) }
+    }
+
+    private static func merge(_ fresh: [WidgetChart], prefix: String) {
+        let all = SharedGroup.loadCharts().filter { !$0.id.hasPrefix(prefix) } + fresh
+        SharedGroup.saveCharts(all.filter { $0.id.hasPrefix("fav.") } + all.filter { !$0.id.hasPrefix("fav.") })
+        WidgetCenter.shared.reloadTimelines(ofKind: "com.personal.grafana.charts")
+    }
+
+    @MainActor static func publishPanels(_ m: PanelsModel) {
+        var out: [WidgetChart] = []
+        func add(_ id: String, _ title: String, _ sub: String, _ pts: [Pt], scale: Double = 1, fmt: (Double) -> String,
+                 warn: Double, bad: Double, lowIsBad: Bool = false) {
+            let p = points(pts, scale: scale)
+            guard let last = p.last?.v else { return }
+            let lvl = lowIsBad ? (last < bad ? 2 : (last < warn ? 1 : 0)) : (last >= bad ? 2 : (last >= warn ? 1 : 0))
+            out.append(WidgetChart(id: "panel." + id, title: title, subtitle: sub, value: fmt(last), level: lvl, points: p, updated: Date()))
+        }
+        add("cpu", "CPU серверов", "среднее", averaged(m.cpu), fmt: { String(format: "%.0f%%", $0) }, warn: Thr.cpuWarn, bad: Thr.cpuBad)
+        add("mem", "RAM серверов", "среднее", averaged(m.mem), fmt: { String(format: "%.0f%%", $0) }, warn: Thr.memWarn, bad: Thr.memBad)
+        add("rtt", "Задержка до филиалов", "среднее", averaged(m.rtt), scale: 1000, fmt: { String(format: "%.0f мс", $0) }, warn: Thr.rttWarn, bad: Thr.rttBad)
+        add("up", "Доступность филиалов", "доля на связи", averaged(m.ping), scale: 100, fmt: { String(format: "%.1f%%", $0) },
+            warn: Thr.uptime, bad: Thr.uptime - 2.5, lowIsBad: true)
+        if !out.isEmpty { merge(out, prefix: "panel.") }
+    }
+
+    @MainActor static func publishFavorites(_ s: Session) async {
+        let fav = Array(FavStore.shared.items.prefix(8))
+        guard !fav.isEmpty else { merge([], prefix: "fav."); return }
+        let series = await s.itemSeries(fav.map(\.id), hours: 6)
+        var out: [WidgetChart] = []
+        for f in fav {
+            guard let se = series.first(where: { $0.name == (f.host.isEmpty ? "" : f.host + ": ") + f.name }) ?? series.first(where: { $0.name.hasSuffix(f.name) && $0.name.hasPrefix(f.host) }),
+                  let last = se.points.last?.v else { continue }
+            out.append(WidgetChart(id: "fav." + f.id, title: f.name, subtitle: f.host, value: formatValue(last, unit: f.units),
+                                   level: 0, points: points(se.points), updated: Date()))
+        }
+        merge(out, prefix: "fav.")
+    }
 }
 
 enum AppSnapshot {
@@ -145,7 +191,7 @@ enum AppSnapshot {
         let ps = ProblemFilters.visible(all)
         let sorted = ps.sorted { ($0.severity, $0.clock) > ($1.severity, $1.clock) }
         let snap = WidgetSnapshot(count: ps.count, high: ps.filter { $0.severity >= 4 }.count, unacked: ps.filter { !$0.acked }.count,
-                                  top: sorted.prefix(8).map { WidgetProblem(id: $0.id, name: $0.name, host: $0.host, severity: $0.severity, clock: $0.clock, acked: $0.acked) },
+                                  top: sorted.prefix(21).map { WidgetProblem(id: $0.id, name: $0.name, host: $0.host, severity: $0.severity, clock: $0.clock, acked: $0.acked) },
                                   updated: Date(), offline: OfflineState.shared.since != nil)
         SharedGroup.save(snap)
         WidgetCenter.shared.reloadAllTimelines()

@@ -95,17 +95,21 @@ struct ProblemsHomeView: View {
             }
         default:
             VStack(alignment: .leading, spacing: 5) {
+                let per = family == .systemLarge ? 7 : 3
+                let pages = max(1, Int((Double(s.top.count) / Double(per)).rounded(.up)))
+                let page = wrapPage(SharedGroup.page("problems"), pages)
                 HStack(alignment: .firstTextBaseline) {
                     Text("Проблем: \(s.count)").font(.headline)
-                    Text("высоких \(s.high) · неподтв. \(s.unacked)").font(.caption).foregroundStyle(.secondary)
+                    Text("высоких \(s.high) · неподтв. \(s.unacked)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     Spacer()
+                    PagerBar(key: "problems", page: page, count: pages)
                 }
                 if s.top.isEmpty {
                     Spacer()
                     Label("Всё спокойно", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
                     Spacer()
                 } else {
-                    ForEach(s.top.prefix(family == .systemLarge ? 8 : 3)) { p in
+                    ForEach(Array(s.top.dropFirst(page * per).prefix(per))) { p in
                         Link(destination: URL(string: "grafanaapp://problem/\(p.id)")!) {
                             HStack(spacing: 6) {
                                 RoundedRectangle(cornerRadius: 2).fill(wColor(p.severity)).frame(width: 4, height: 26)

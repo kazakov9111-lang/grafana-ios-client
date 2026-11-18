@@ -130,6 +130,7 @@ final class PanelsModel: ObservableObject {
         rtt = (try? await session.hostSeries(host: "/.*/", filter: "ICMP response time", seconds: windowSeconds, group: "Mikrotik", maxPoints: 200, to: windowEnd)) ?? []
         ping = (try? await session.hostSeries(host: "/.*/", filter: "ICMP ping", range: .h24, group: "Mikrotik")) ?? []
         problems = (try? await session.loadProblems()) ?? []
+        WidgetCharts.publishPanels(self)
         history90 = (try? await session.problemHistory(days: 90)) ?? history90
         let cut = Date().addingTimeInterval(-7 * 86400)
         history = history90.filter { ($0.end ?? Date()) > cut }

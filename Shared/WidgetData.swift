@@ -53,3 +53,34 @@ enum SharedGroup {
         return try? JSONDecoder().decode(WidgetSnapshot.self, from: d)
     }
 }
+
+struct WidgetPoint: Codable, Hashable {
+    var t: Date
+    var v: Double
+}
+
+struct WidgetChart: Codable, Hashable, Identifiable {
+    var id: String
+    var title: String
+    var subtitle: String
+    var value: String
+    var level: Int          // 0 норма, 1 внимание, 2 плохо
+    var points: [WidgetPoint]
+    var updated: Date
+}
+
+extension SharedGroup {
+    static func saveCharts(_ c: [WidgetChart]) {
+        guard let d = try? JSONEncoder().encode(c) else { return }
+        defaults?.set(d, forKey: "widgetCharts")
+    }
+
+    static func loadCharts() -> [WidgetChart] {
+        guard let d = defaults?.data(forKey: "widgetCharts"), let v = try? JSONDecoder().decode([WidgetChart].self, from: d) else { return [] }
+        return v
+    }
+
+    /// Номер страницы виджета (листается кнопками ‹ ›).
+    static func page(_ key: String) -> Int { defaults?.integer(forKey: "page." + key) ?? 0 }
+    static func setPage(_ key: String, _ v: Int) { defaults?.set(v, forKey: "page." + key) }
+}

@@ -10,6 +10,7 @@ struct GrafanaWidgets: WidgetBundle {
         ProblemLiveActivity()
         if #available(iOS 18.0, *) { ProblemsControl() }
         ProblemsHomeWidget()
+        ChartsHomeWidget()
     }
 }
 

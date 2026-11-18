@@ -783,6 +783,7 @@ final class FavStore: ObservableObject {
     func toggle(_ f: FavItem) {
         if contains(f.id) { items.removeAll { $0.id == f.id } } else { items.append(f) }
         Haptics.tap()
+        Task { @MainActor in if let s = Badge.session { await WidgetCharts.publishFavorites(s) } }
     }
 }
 
