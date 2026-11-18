@@ -1,24 +1,108 @@
 import SwiftUI
 import WidgetKit
 
-#if APPGROUP
+import AppIntents
 
-// Виджеты на экран «Домой» и экран блокировки. Данные кладёт приложение (SharedGroup),
-// сам виджет в сеть не ходит: обновляется, когда приложение загрузило проблемы.
+// Виджеты на экран «Домой» и экран блокировки. Бесплатная подпись не даёт общей папки (App Group),
+// поэтому виджет сам ходит в Zabbix API по адресу и токену из своих настроек (раз в 15–30 мин).
 
 struct SnapEntry: TimelineEntry {
     let date: Date
     let snap: WidgetSnapshot?
+    var message: String? = nil
 }
 
-struct SnapProvider: TimelineProvider {
-    func placeholder(in context: Context) -> SnapEntry { SnapEntry(date: .now, snap: Self.sample) }
-    func getSnapshot(in context: Context, completion: @escaping (SnapEntry) -> Void) {
-        completion(SnapEntry(date: .now, snap: SharedGroup.load() ?? Self.sample))
+struct ZabbixWidgetIntent: WidgetConfigurationIntent {
+    static var title: LocalizedStringResource = "Проблемы Zabbix"
+    static var description = IntentDescription("Адрес Zabbix и API-токен (лучше только для чтения). Скопировать их можно в приложении: Настройки → «Виджет на экран Домой».")
+
+    @Parameter(title: "Адрес Zabbix") var url: String?
+    @Parameter(title: "API-токен") var token: String?
+    @Parameter(title: "Только неподтверждённые", default: false) var unackedOnly: Bool
+}
+
+enum WidgetFetch {
+    static let hint = "Нажмите и удерживайте виджет → «Изменить виджет» → укажите адрес Zabbix и API-токен"
+
+    private static func str(_ v: Any?) -> String {
+        if let s = v as? String { return s }
+        if let n = v as? NSNumber { return n.stringValue }
+        return ""
     }
-    func getTimeline(in context: Context, completion: @escaping (Timeline<SnapEntry>) -> Void) {
-        let e = SnapEntry(date: .now, snap: SharedGroup.load())
-        completion(Timeline(entries: [e], policy: .after(Date().addingTimeInterval(15 * 60))))
+
+    static func load(_ c: ZabbixWidgetIntent) async -> SnapEntry {
+        guard var raw = c.url?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+              let tok = c.token?.trimmingCharacters(in: .whitespacesAndNewlines), !tok.isEmpty else {
+            return SnapEntry(date: .now, snap: SharedGroup.load(), message: hint)
+        }
+        if !raw.hasPrefix("http") { raw = "https://" + raw }
+        if !raw.contains("api_jsonrpc.php") {
+            while raw.hasSuffix("/") { raw.removeLast() }
+            raw += "/api_jsonrpc.php"
+        }
+        guard let url = URL(string: raw) else { return SnapEntry(date: .now, snap: nil, message: "Неверный адрес Zabbix") }
+        do {
+            var probs = try await call(url, tok, "problem.get", [
+                "output": ["eventid", "name", "severity", "clock", "acknowledged", "objectid"],
+                "severities": [3, 4, 5], "recent": false, "suppressed": false,
+                "sortfield": ["eventid"], "sortorder": "DESC", "limit": 300
+            ])
+            if c.unackedOnly { probs = probs.filter { str($0["acknowledged"]) != "1" } }
+            func sev(_ p: [String: Any]) -> Int { Int(str(p["severity"])) ?? 3 }
+            func clock(_ p: [String: Any]) -> Double { Double(str(p["clock"])) ?? 0 }
+            let sorted = probs.sorted { a, b in sev(a) == sev(b) ? clock(a) > clock(b) : sev(a) > sev(b) }
+            let top = Array(sorted.prefix(8))
+            var hostBy: [String: String] = [:]
+            let tids = top.map { str($0["objectid"]) }.filter { !$0.isEmpty }
+            if !tids.isEmpty {
+                let trig = try await call(url, tok, "trigger.get", ["triggerids": tids, "output": ["triggerid"], "selectHosts": ["name"]])
+                for t in trig {
+                    let hs = t["hosts"] as? [[String: Any]] ?? []
+                    hostBy[str(t["triggerid"])] = str(hs.first?["name"])
+                }
+            }
+            var items: [WidgetProblem] = []
+            for p in top {
+                items.append(WidgetProblem(id: str(p["eventid"]), name: str(p["name"]), host: hostBy[str(p["objectid"])] ?? "",
+                                           severity: sev(p), clock: Date(timeIntervalSince1970: clock(p)), acked: str(p["acknowledged"]) == "1"))
+            }
+            let high = probs.filter { sev($0) >= 4 }.count
+            let unacked = probs.filter { str($0["acknowledged"]) != "1" }.count
+            let snap = WidgetSnapshot(count: probs.count, high: high, unacked: unacked, top: items, updated: .now, offline: false)
+            return SnapEntry(date: .now, snap: snap)
+        } catch {
+            return SnapEntry(date: .now, snap: nil, message: "Zabbix: " + error.localizedDescription)
+        }
+    }
+
+    struct Fail: LocalizedError { let errorDescription: String? }
+
+    static func call(_ url: URL, _ token: String, _ method: String, _ params: [String: Any]) async throws -> [[String: Any]] {
+        var req = URLRequest(url: url, timeoutInterval: 20)
+        req.httpMethod = "POST"
+        req.setValue("application/json-rpc", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+        let body: [String: Any] = ["jsonrpc": "2.0", "method": method, "params": params, "id": 1]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let h = resp as? HTTPURLResponse, h.statusCode >= 400 { throw Fail(errorDescription: "HTTP \(h.statusCode)") }
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw Fail(errorDescription: "непонятный ответ") }
+        if let e = obj["error"] as? [String: Any] {
+            throw Fail(errorDescription: [e["message"] as? String, e["data"] as? String].compactMap { $0 }.joined(separator: ": "))
+        }
+        return obj["result"] as? [[String: Any]] ?? []
+    }
+}
+
+struct SnapProvider: AppIntentTimelineProvider {
+    func placeholder(in context: Context) -> SnapEntry { SnapEntry(date: .now, snap: Self.sample) }
+    func snapshot(for configuration: ZabbixWidgetIntent, in context: Context) async -> SnapEntry {
+        if context.isPreview && (configuration.token ?? "").isEmpty { return SnapEntry(date: .now, snap: Self.sample) }
+        return await WidgetFetch.load(configuration)
+    }
+    func timeline(for configuration: ZabbixWidgetIntent, in context: Context) async -> Timeline<SnapEntry> {
+        let e = await WidgetFetch.load(configuration)
+        return Timeline(entries: [e], policy: .after(Date().addingTimeInterval(15 * 60)))
     }
 
     static let sample = WidgetSnapshot(count: 4, high: 1, unacked: 2, top: [
@@ -54,11 +138,9 @@ struct ProblemsHomeView: View {
             content(s).widgetURL(URL(string: "grafanaapp://problems"))
         } else {
             VStack(spacing: 6) {
-                Image(systemName: SharedGroup.available ? "arrow.clockwise.circle" : "folder.badge.questionmark").font(.title2)
-                Text(SharedGroup.available ? "Откройте приложение, чтобы виджет получил данные"
-                                           : "Нет общей папки с приложением (App Group) — подпись её не дала")
-                    .font(.caption).multilineTextAlignment(.center)
-                if family != .systemSmall { Text(SharedGroup.id).font(.system(size: 9)).foregroundStyle(.tertiary) }
+                Image(systemName: "gearshape").font(.title3)
+                Text(entry.message ?? WidgetFetch.hint)
+                    .font(family == .systemSmall ? .system(size: 11) : .caption).multilineTextAlignment(.center)
             }
             .foregroundStyle(.secondary)
         }
@@ -135,7 +217,7 @@ struct ProblemsHomeView: View {
 
 struct ProblemsHomeWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "com.personal.grafana.home", provider: SnapProvider()) { e in
+        AppIntentConfiguration(kind: "com.personal.grafana.home", intent: ZabbixWidgetIntent.self, provider: SnapProvider()) { e in
             ProblemsHomeView(entry: e).containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Проблемы Zabbix")
@@ -144,4 +226,3 @@ struct ProblemsHomeWidget: Widget {
     }
 }
 
-#endif

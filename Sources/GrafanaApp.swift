@@ -195,6 +195,7 @@ struct SettingsView: View {
                 } header: { Text("Подтверждение проблем") } footer: {
                     Text("Нужно, если пользователь Zabbix в Grafana только читает. Создайте в Zabbix токен для учётки с правом подтверждать проблемы. Пусто — подтверждение идёт через Grafana.")
                 }
+                WidgetSetupSection()
                 Section {
                     NavigationLink { BranchEditorView() } label: {
                         Label("Филиалы на карте", systemImage: "map")

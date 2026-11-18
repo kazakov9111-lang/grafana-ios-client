@@ -321,10 +321,6 @@ struct ConnectionCheckView: View {
                 return n == 0 ? (3, "Доступ есть, правил нет") : (2, "Правил: \(n)")
             })
         ]
-        list.append((ConnCheck(id: "widgets", title: "Виджеты (общая папка)", icon: "square.grid.2x2",
-                               hint: "Без общей папки (App Group) виджеты не видят данные приложения. Её даёт подпись Sideloadly; в обычной сборке её и не должно быть."), {
-            SharedGroup.available ? (2, "Есть: \(SharedGroup.id)") : (3, "Нет: подпись не дала App Group «\(SharedGroup.id)»")
-        }))
         if ZabbixDirect.config != nil {
             list.append((ConnCheck(id: "token", title: "Токен Zabbix (напрямую)", icon: "key", hint: "Проверьте адрес Zabbix и срок действия токена в Настройках."), {
                 let r = try await session.zabbixAny("hostgroup.get", .object(["output": .array([.string("groupid")]), "editable": .bool(true)]))
@@ -451,5 +447,27 @@ enum RackImport {
         }
         RackStore.shared.racks = racks
         return (byRack.count, added)
+    }
+}
+
+// MARK: Настройка виджета (адрес и токен вводятся в самом виджете)
+
+struct WidgetSetupSection: View {
+    @State private var copied: String?
+    private func copy(_ text: String, _ what: String) {
+        UIPasteboard.general.setItems([["public.utf8-plain-text": text]],
+                                      options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(120)])
+        copied = what + " скопирован на 2 минуты"
+    }
+    var body: some View {
+        let url = UserDefaults.standard.string(forKey: "zbxURL") ?? ""
+        let token = Keychain.load(account: "zbxToken") ?? ""
+        Section {
+            Button { copy(url, "Адрес") } label: { Label("Скопировать адрес Zabbix", systemImage: "link") }.disabled(url.isEmpty)
+            Button { copy(token, "Токен") } label: { Label("Скопировать токен Zabbix", systemImage: "key") }.disabled(token.isEmpty)
+            if let copied { Text(copied).font(.caption).foregroundStyle(.green) }
+        } header: { Text("Виджет на экран «Домой»") } footer: {
+            Text("Виджет сам спрашивает Zabbix раз в 15–30 минут. Добавьте виджет Grafana, нажмите на нём и удерживайте → «Изменить виджет» → вставьте адрес и токен. Безопаснее отдельный токен только для чтения. Исключённые группы и фильтры приложения на виджет не действуют.")
+        }
     }
 }
