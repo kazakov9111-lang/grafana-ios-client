@@ -4,6 +4,7 @@ import CoreSpotlight
 import UniformTypeIdentifiers
 import WidgetKit
 import CryptoKit
+import Security
 import Charts
 
 // v3.2: проверка подключения, офлайн-кэш всех экранов, Siri (открыть экран, подтвердить, хост),
@@ -132,6 +133,7 @@ struct OfflineBanner: View {
 
 /// Данные для виджетов при запуске и каждом возврате в приложение (не только на вкладке «Проблемы»).
 @MainActor func refreshWidgets() async {
+    WidgetKeys.sync()
     guard let s = Badge.session else { return }
     var n = 0
     while s.restoring && n < 150 { try? await Task.sleep(nanoseconds: 100_000_000); n += 1 }
@@ -321,6 +323,15 @@ struct ConnectionCheckView: View {
                 return n == 0 ? (3, "Доступ есть, правил нет") : (2, "Правил: \(n)")
             })
         ]
+        list.append((ConnCheck(id: "wkeys", title: "Токен для виджета", icon: "key.horizontal",
+                               hint: "Виджет берёт адрес и токен Zabbix из связки ключей. Задайте их в Настройках → «Подтверждение проблем»."), {
+            let r = WidgetKeys.sync()
+            switch r {
+            case errSecSuccess: return WidgetKeys.hasValues ? (2, "Передан виджету (группа ключей \(SharedKeychain.group ?? "по умолчанию"))") : (3, "Адрес или токен Zabbix не заданы")
+            case -34018: return (3, "Подпись не дала общую связку ключей — виджет не увидит токен")
+            default: return (3, "Ошибка связки ключей \(r)")
+            }
+        }))
         if ZabbixDirect.config != nil {
             list.append((ConnCheck(id: "token", title: "Токен Zabbix (напрямую)", icon: "key", hint: "Проверьте адрес Zabbix и срок действия токена в Настройках."), {
                 let r = try await session.zabbixAny("hostgroup.get", .object(["output": .array([.string("groupid")]), "editable": .bool(true)]))
@@ -467,7 +478,22 @@ struct WidgetSetupSection: View {
             Button { copy(token, "Токен") } label: { Label("Скопировать токен Zabbix", systemImage: "key") }.disabled(token.isEmpty)
             if let copied { Text(copied).font(.caption).foregroundStyle(.green) }
         } header: { Text("Виджет на экран «Домой»") } footer: {
-            Text("Виджет сам спрашивает Zabbix раз в 15–30 минут. Добавьте виджет Grafana, нажмите на нём и удерживайте → «Изменить виджет» → вставьте адрес и токен. Безопаснее отдельный токен только для чтения. Исключённые группы и фильтры приложения на виджет не действуют.")
+            Text("Виджет сам спрашивает Zabbix раз в 15–30 минут, адрес и токен берёт из «Подтверждения проблем» автоматически. Если iOS показывает у виджета «Изменить виджет», их можно вписать и там (кнопки выше). Исключённые группы и фильтры приложения на виджет не действуют.")
         }
+    }
+}
+
+enum WidgetKeys {
+    static var hasValues: Bool {
+        !(UserDefaults.standard.string(forKey: "zbxURL") ?? "").isEmpty && !(Keychain.load(account: "zbxToken") ?? "").isEmpty
+    }
+    /// Копия адреса и токена Zabbix для виджета; при изменении — перерисовать виджеты.
+    @discardableResult static func sync() -> OSStatus {
+        let url = UserDefaults.standard.string(forKey: "zbxURL")?.trimmingCharacters(in: .whitespaces) ?? ""
+        let token = Keychain.load(account: "zbxToken") ?? ""
+        let before = SharedKeychain.load()
+        let r = SharedKeychain.save(url: url, token: token)
+        if before?.url != url || before?.token != token { WidgetCenter.shared.reloadAllTimelines() }
+        return r
     }
 }

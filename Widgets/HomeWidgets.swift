@@ -22,7 +22,7 @@ struct ZabbixWidgetIntent: WidgetConfigurationIntent {
 }
 
 enum WidgetFetch {
-    static let hint = "Нажмите и удерживайте виджет → «Изменить виджет» → укажите адрес Zabbix и API-токен"
+    static let hint = "Откройте приложение Grafana: виджету нужен адрес и токен Zabbix из Настроек → «Подтверждение проблем»"
 
     private static func str(_ v: Any?) -> String {
         if let s = v as? String { return s }
@@ -31,10 +31,14 @@ enum WidgetFetch {
     }
 
     static func load(_ c: ZabbixWidgetIntent) async -> SnapEntry {
-        guard var raw = c.url?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
-              let tok = c.token?.trimmingCharacters(in: .whitespacesAndNewlines), !tok.isEmpty else {
+        var rawURL = c.url?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var rawTok = c.token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if rawURL.isEmpty || rawTok.isEmpty, let k = SharedKeychain.load() { rawURL = k.url; rawTok = k.token }
+        guard !rawURL.isEmpty, !rawTok.isEmpty else {
             return SnapEntry(date: .now, snap: SharedGroup.load(), message: hint)
         }
+        var raw = rawURL
+        let tok = rawTok
         if !raw.hasPrefix("http") { raw = "https://" + raw }
         if !raw.contains("api_jsonrpc.php") {
             while raw.hasSuffix("/") { raw.removeLast() }
